@@ -1,0 +1,111 @@
+services:
+  sglang:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      # If you use modelscope, you need mount this directory
+      # - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+    restart: always
+    # network_mode: host # required by RDMA
+    privileged: false # required by RDMA
+    ports:
+      - 30000:30000
+    environment:
+      - HF_TOKEN=<token>
+      # - SGLANG_USE_MODELSCOPE=true
+    entrypoint: python3 -m sglang.launch_server
+    command: >
+      --model-path google/gemma-3-270m-it-qat-q4_0-unquantized
+      --host 0.0.0.0
+      --port 30000
+      --attention-backend flashinfer
+      --dtype bfloat16
+      --mem-fraction-static 0.1
+      --max-total-tokens 2048
+      --max-prefill-tokens 512
+      --chunked-prefill-size 512
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    # ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  sglang-embedding:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang-embedding
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    restart: always
+    privileged: false
+    ports:
+      - 30001:30000
+    environment:
+      - HF_TOKEN=<token>
+    entrypoint: python3 -m sglang.launch_server
+    command: >
+      --model-path Qwen/Qwen3-Embedding-0.6B
+      --is-embedding
+      --json-model-override-args '{"matryoshka_dimensions": [128, 256, 512, 1024]}'
+      --host 0.0.0.0
+      --port 30000
+      --attention-backend flashinfer
+      --dtype bfloat16
+      --mem-fraction-static 0.2
+      --kv-cache-dtype fp8_e4m3
+      --chunked-prefill-size 8192
+      --log-level warning
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  sglang-reranker:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang-reranker
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    restart: always
+    privileged: false
+    ports:
+      - 30002:30000
+    environment:
+      - HF_TOKEN=<token>
+    entrypoint: python3 -m sglang.launch_server
+    command: >
+      --model-path BAAI/bge-reranker-v2-m3
+      --disable-radix-cache
+      --is-embedding
+      --host 0.0.0.0
+      --port 30000
+      --attention-backend triton
+      --mem-fraction-static 0.2
+      --chunked-prefill-size -1
+      --log-level warning
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
