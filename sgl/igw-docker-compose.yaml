@@ -1,0 +1,146 @@
+services:
+  # SGLang Services with Prometheus metrics enabled
+  sglang-chat:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang-chat
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    restart: always
+    privileged: false
+    entrypoint: python3 -m sglang.launch_server
+    command: >
+      --model-path google/gemma-3-270m-it-qat-q4_0-unquantized
+      --host 0.0.0.0
+      --port 30000
+      --attention-backend flashinfer
+      --dtype bfloat16
+      --mem-fraction-static 0.1
+      --max-total-tokens 2048
+      --max-prefill-tokens 512
+      --chunked-prefill-size 512
+      --enable-metrics
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - sglang-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=29000"
+      - "prometheus.io/path=/metrics"
+
+  sglang-embedding:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang-embedding
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    restart: always
+    privileged: false
+    entrypoint: python3 -m sglang.launch_server
+    command: >
+      --model-path Qwen/Qwen3-Embedding-0.6B
+      --is-embedding
+      --json-model-override-args '{"matryoshka_dimensions": [128, 256, 512, 1024]}'
+      --host 0.0.0.0
+      --port 30000
+      --attention-backend flashinfer
+      --dtype bfloat16
+      --mem-fraction-static 0.2
+      --kv-cache-dtype fp8_e4m3
+      --chunked-prefill-size 8192
+      --log-level warning
+      --enable-metrics
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - sglang-network
+    labels:
+    - "prometheus.io/scrape=true"
+    - "prometheus.io/port=29000"
+    - "prometheus.io/path=/metrics" 
+
+  # SGLang Router with monitoring
+  sglang-router:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang-router
+    restart: always
+    ports:
+      - 30000:30000      # Router API port
+      - 29100:29000      # Router Prometheus metrics port
+    entrypoint: python3 -m sglang_router.launch_router
+    command: >
+      --enable-igw
+      --host 0.0.0.0
+      --port 30000
+      --policy cache_aware
+      --prometheus-host 0.0.0.0
+      --prometheus-port 29000
+      --log-level info
+    networks:
+      - sglang-network
+    depends_on:
+      sglang-chat:
+        condition: service_healthy
+      sglang-embedding:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=29000"
+      - "prometheus.io/path=/metrics"
+
+  worker-register:
+    image: curlimages/curl:latest
+    container_name: sglang-worker-register
+    depends_on:
+      sglang-router:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        sleep 30
+        curl -X POST http://sglang-router:30000/workers \\
+          -H 'Content-Type: application/json' \\
+          -d '{\"url\":\"http://sglang-chat:30000\",\"model_id\":\"gemma-3-270m-it\",\"priority\":10,\"labels\":{\"tier\":\"gold\"}}'
+          
+        curl -X POST http://sglang-router:30000/workers \\
+          -H 'Content-Type: application/json' \\
+          -d '{\"url\":\"http://sglang-embedding:30000\",\"model_id\":\"qwen3-embedding-0.6b\",\"priority\":10,\"labels\":{\"tier\":\"gold\"}}'
+          
+        echo 'Workers registered successfully'
+      "
+    network_mode: service:sglang-router
+    
+volumes:
+  hf_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.cache/huggingface
+
+networks:
+  sglang-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
