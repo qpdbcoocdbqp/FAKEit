@@ -3,7 +3,7 @@ services:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-chat
     volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - hf_cache:/root/.cache/huggingface
       # If you use modelscope, you need mount this directory
       # - ${HOME}/.cache/modelscope:/root/.cache/modelscope
     restart: always
@@ -39,7 +39,7 @@ services:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-embedding
     volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - hf_cache:/root/.cache/huggingface
     restart: always
     privileged: false
     ports:
@@ -73,7 +73,7 @@ services:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-reranker
     volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - hf_cache:/root/.cache/huggingface
     restart: always
     privileged: false
     ports:
@@ -105,7 +105,7 @@ services:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-multimodal
     volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - hf_cache:/root/.cache/huggingface
     restart: always
     privileged: false
     ports:
@@ -136,3 +136,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+volumes:
+  hf_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.cache/huggingface

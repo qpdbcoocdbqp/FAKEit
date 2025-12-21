@@ -25,12 +25,19 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   ```sh
   docker pull lmsysorg/sglang:latest-runtime
 
-  # Set your HF_TOKEN=<token> in sgl/docker-compose.yaml
-  docker compose -f sgl/docker-compose.yaml up -d
+  # Set your HF_TOKEN=<token> in .env file
+  docker compose \
+  --project-directory . \
+  --env-file .env \
+  -f sgl/docker-compose.yaml \
+  up -d
   ```
 
-* **Sample models**
-  * `google/gemma-3-270m-it-qat-q4_0-unquantized`
-  * `Qwen/Qwen3-Embedding-0.6B`
-  * `BAAI/bge-reranker-v2-m3`
-  * `Qwen/Qwen3-VL-2B-Instruct`
+* **Sample model**
+
+  | service           | port  | model                                         |
+  | ----------------- | ----- | --------------------------------------------- |
+  | sglang-chat       | 30000 | `google/gemma-3-270m-it-qat-q4_0-unquantized` |
+  | sglang-embedding  | 30001 | `Qwen/Qwen3-Embedding-0.6B`                   |
+  | sglang-reranker   | 30002 | `BAAI/bge-reranker-v2-m3`                     |
+  | sglang-multimodal | 30003 | `Qwen/Qwen3-VL-2B-Instruct`                   |
