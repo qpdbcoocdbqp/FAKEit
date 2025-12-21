@@ -1,7 +1,7 @@
 services:
-  sglang:
+  sglang-chat:
     image: lmsysorg/sglang:latest-runtime
-    container_name: sglang
+    container_name: sglang-chat
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       # If you use modelscope, you need mount this directory
@@ -11,9 +11,6 @@ services:
     privileged: false # required by RDMA
     ports:
       - 30000:30000
-    environment:
-      - HF_TOKEN=<token>
-      # - SGLANG_USE_MODELSCOPE=true
     entrypoint: python3 -m sglang.launch_server
     command: >
       --model-path google/gemma-3-270m-it-qat-q4_0-unquantized
@@ -47,8 +44,6 @@ services:
     privileged: false
     ports:
       - 30001:30000
-    environment:
-      - HF_TOKEN=<token>
     entrypoint: python3 -m sglang.launch_server
     command: >
       --model-path Qwen/Qwen3-Embedding-0.6B
@@ -74,7 +69,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
   sglang-reranker:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-reranker
@@ -84,8 +78,6 @@ services:
     privileged: false
     ports:
       - 30002:30000
-    environment:
-      - HF_TOKEN=<token>
     entrypoint: python3 -m sglang.launch_server
     command: >
       --model-path BAAI/bge-reranker-v2-m3
@@ -96,6 +88,41 @@ services:
       --attention-backend triton
       --mem-fraction-static 0.2
       --chunked-prefill-size -1
+      --log-level warning
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  sglang-multimodal:
+    image: lmsysorg/sglang:latest-runtime
+    container_name: sglang-multimodal
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    restart: always
+    privileged: false
+    ports:
+      - 30003:30000
+    env_file: ./.env
+    entrypoint: python3 -m sglang.launch_server
+    command: >
+      --model-path Qwen/Qwen3-VL-2B-Instruct
+      --enable-multimodal
+      --host 0.0.0.0
+      --port 30000
+      --attention-backend flashinfer
+      --dtype bfloat16
+      --mem-fraction-static 0.4
+      --max-total-tokens 2048
+      --max-prefill-tokens 512
+      --chunked-prefill-size 512
       --log-level warning
     ulimits:
       memlock: -1

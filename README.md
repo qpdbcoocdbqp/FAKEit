@@ -33,3 +33,4 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   * `google/gemma-3-270m-it-qat-q4_0-unquantized`
   * `Qwen/Qwen3-Embedding-0.6B`
   * `BAAI/bge-reranker-v2-m3`
+  * `Qwen/Qwen3-VL-2B-Instruct`
