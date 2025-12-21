@@ -26,18 +26,52 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   docker pull lmsysorg/sglang:latest-runtime
 
   # Set your HF_TOKEN=<token> in .env file
+  cat .env.example
+
+  # simple case
   docker compose \
   --project-directory . \
   --env-file .env \
-  -f sgl/docker-compose.yaml \
+  -f sgl/simple-docker-compose.yaml \
+  up -d
+
+  # prefill-decode case
+  docker compose \
+  --project-directory . \
+  --env-file .env \
+  -f sgl/pd-docker-compose.yaml \
   up -d
   ```
 
-* **Sample model**
+  * **Troubleshoot: GPU OOM**
+    * `--mem-fraction-static`: GPU memory usage percentage.
+    * `--cpu-offload-gb`: offload to CPU memory.
 
-  | service           | port  | model                                         |
-  | ----------------- | ----- | --------------------------------------------- |
-  | sglang-chat       | 30000 | `google/gemma-3-270m-it-qat-q4_0-unquantized` |
-  | sglang-embedding  | 30001 | `Qwen/Qwen3-Embedding-0.6B`                   |
-  | sglang-reranker   | 30002 | `BAAI/bge-reranker-v2-m3`                     |
-  | sglang-multimodal | 30003 | `Qwen/Qwen3-VL-2B-Instruct`                   |
+
+### Service in docker compose
+
+* `sgl/simple-docker-compose.yaml`: simple case
+
+  <details> <summary> Service </summary>
+
+    | service           |        port | model                                         |
+    | :---------------- | ----------: | --------------------------------------------- |
+    | sglang-chat       | 30000:30000 | `google/gemma-3-270m-it-qat-q4_0-unquantized` |
+    | sglang-embedding  | 30001:30000 | `Qwen/Qwen3-Embedding-0.6B`                   |
+    | sglang-reranker   | 30002:30000 | `BAAI/bge-reranker-v2-m3`                     |
+    | sglang-multimodal | 30003:30000 | `Qwen/Qwen3-VL-2B-Instruct`                   |
+
+  </details>
+
+
+* `sgl/pd-docker-compose.yaml`: prefill-decode case
+
+  <details> <summary> Service </summary>
+
+    | service             |       port | model                                         |
+    | :------------------ | ---------: | --------------------------------------------- |
+    | sglang-chat-prefill |    -:30000 | `google/gemma-3-270m-it-qat-q4_0-unquantized` |
+    | sglang-chat-decode  |    -:30000 | `google/gemma-3-270m-it-qat-q4_0-unquantize`  |
+    | sglang-chat-router  | 30000:8000 | -                                             |
+    
+  </details>

@@ -1,6 +1,9 @@
+# cache
 .vscode
 .env
+*.pyc
 
+# devs
 dev/
-
 dev.md
+dev.py
