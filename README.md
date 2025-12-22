@@ -29,11 +29,11 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   cat .env.example
 
   # simple case
-  docker compose \
-  --project-directory . \
-  --env-file .env \
-  -f sgl/simple-docker-compose.yaml \
-  up -d
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-chat
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-embedding
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-reranker
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-multimodal
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-function
 
   # prefill-decode case
   docker compose \
@@ -60,6 +60,7 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
     | sglang-embedding  | 30001:30000 | `Qwen/Qwen3-Embedding-0.6B`                   |
     | sglang-reranker   | 30002:30000 | `BAAI/bge-reranker-v2-m3`                     |
     | sglang-multimodal | 30003:30000 | `Qwen/Qwen3-VL-2B-Instruct`                   |
+    | sglang-function   | 30004:30000 | `google/functiongemma-270m-it`                |
 
   </details>
 
