@@ -4,8 +4,9 @@
 .env
 *.pyc
 
-
 # devs
 dev/
 dev.md
 dev.py
+dev-*
+models--*
