@@ -36,11 +36,11 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-function
 
   # prefill-decode case
-  docker compose \
-  --project-directory . \
-  --env-file .env \
-  -f sgl/pd-docker-compose.yaml \
-  up -d
+  docker compose --project-directory . --env-file .env -f sgl/pd-docker-compose.yaml up -d
+
+  # qunatization case
+  docker compose --project-directory . --env-file .env -f sgl/quantization-docker-compose.yaml up -d
+
   ```
 
   * **Troubleshoot: GPU OOM**
@@ -72,7 +72,24 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
     | service             |       port | model                                         |
     | :------------------ | ---------: | --------------------------------------------- |
     | sglang-chat-prefill |    -:30000 | `google/gemma-3-270m-it-qat-q4_0-unquantized` |
-    | sglang-chat-decode  |    -:30000 | `google/gemma-3-270m-it-qat-q4_0-unquantize`  |
+    | sglang-chat-decode  |    -:30000 | `google/gemma-3-270m-it-qat-q4_0-unquantized` |
     | sglang-chat-router  | 30000:8000 | -                                             |
+    
+  </details>
+
+* `sgl/quantization-docker-compose.yaml`: qunatization case
+
+  * Here use `Qwen/Qwen3-0.6B` to be the quantization based model.
+
+  <details> <summary> Service </summary>
+
+    | service         |       port | quantization          |
+    | :-------------- | ---------: | --------------------- |
+    | modelopt-fp8    |    -:30000 | `nvidia-modelopt/fp8` |
+    | modelopt-fp4    |    -:30000 | `nvidia-modelopt/fp4` |
+    | autoround-w4a16 |    -:30000 | `auto-round/W4A16`    |
+    | autoround-awq   |    -:30000 | `auto-round/AWQ`      |
+    | autoround-gptq  |    -:30000 | `auto-round/GPTQ`     |
+    | sglang-router   | 30000:8000 | -                     |
     
   </details>
