@@ -1,0 +1,16 @@
+# cache
+.agent.md
+.vscode
+.env
+*.pyc
+*.jsonl
+*.json
+
+# devs
+cache/
+dev/
+dev.md
+dev.py
+dev-*
+models--*
+issue-*
