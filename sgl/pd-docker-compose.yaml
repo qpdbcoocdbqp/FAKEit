@@ -32,6 +32,9 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    networks:
+      - sglang-network
+
   sglang-chat-decode:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-chat-decode
@@ -65,6 +68,9 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    networks:
+      - sglang-network
+
   sglang-chat-router:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-chat-router
@@ -86,6 +92,8 @@ services:
         condition: service_healthy
       sglang-chat-decode:
         condition: service_healthy
+    networks:
+      - sglang-network
 
 volumes:
   hf_cache:
@@ -106,3 +114,10 @@ volumes:
       type: none
       o: bind
       device: volume/triton
+
+networks:
+  sglang-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

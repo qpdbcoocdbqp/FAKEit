@@ -10,6 +10,7 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
 ## Reference
 
 * [sgl-project/sglang](https://github.com/sgl-project/sglang)
+* [DockerHub/lmsysorg](https://hub.docker.com/u/lmsysorg)
 
 ## SGLang
 

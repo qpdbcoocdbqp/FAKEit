@@ -1,7 +1,7 @@
 services:
   # SGLang Services with Prometheus metrics enabled
   sglang-chat:
-    image: lmsysorg/sglang:latest-runtime
+    image: lmsysorg/sglang:${SGLANG_TAG:-latest-runtime}
     container_name: sglang-chat
     volumes:
       - hf_cache:/root/.cache/huggingface
@@ -41,7 +41,7 @@ services:
       - "prometheus.io/path=/metrics"
 
   sglang-embedding:
-    image: lmsysorg/sglang:latest-runtime
+    image: lmsysorg/sglang:${SGLANG_TAG:-latest-runtime}
     container_name: sglang-embedding
     volumes:
       - hf_cache:/root/.cache/huggingface
@@ -84,7 +84,7 @@ services:
 
   # SGLang Router with monitoring
   sglang-router:
-    image: lmsysorg/sglang:latest-runtime
+    image: lmsysorg/sglang:${SGLANG_TAG:-latest-runtime}
     container_name: sglang-router
     restart: always
     ports:
