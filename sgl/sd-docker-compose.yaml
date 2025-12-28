@@ -1,8 +1,7 @@
 services:
-  # SGLang Services with Prometheus metrics enabled
-  sglang-chat:
+  native-model:
     image: lmsysorg/sglang:latest-runtime
-    container_name: sglang-chat
+    container_name: native-model
     volumes:
       - hf_cache:/root/.cache/huggingface
       - fi_cache:/root/.cache/flashinfer
@@ -11,15 +10,20 @@ services:
     privileged: false
     entrypoint: python3 -m sglang.launch_server
     command: >
-      --model-path google/gemma-3-270m-it-qat-q4_0-unquantized
+      --model-path Qwen/Qwen3-0.6B
       --host 0.0.0.0
       --port 30000
       --attention-backend flashinfer
       --dtype bfloat16
-      --mem-fraction-static 0.1
+      --kv-cache-dtype fp8_e4m3
+      --mem-fraction-static 0.2
+      --context-length 2048
       --max-total-tokens 2048
       --max-prefill-tokens 512
-      --chunked-prefill-size 512
+      --max-running-requests 1
+      --cuda-graph-max-bs 1
+      --tp 1
+      --trust-remote-code
       --enable-metrics
     ulimits:
       memlock: -1
@@ -40,28 +44,37 @@ services:
       - "prometheus.io/port=29000"
       - "prometheus.io/path=/metrics"
 
-  sglang-embedding:
+  eagle3-model:
     image: lmsysorg/sglang:latest-runtime
-    container_name: sglang-embedding
+    container_name: eagle3-model
     volumes:
       - hf_cache:/root/.cache/huggingface
       - fi_cache:/root/.cache/flashinfer
       - tt_cache:/root/.triton
+      - eagle_cache:/root/.cache/eagle
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
     command: >
-      --model-path Qwen/Qwen3-Embedding-0.6B
-      --is-embedding
-      --json-model-override-args '{"matryoshka_dimensions": [128, 256, 512, 1024]}'
+      --model-path Qwen/Qwen3-0.6B
+      --speculative-algorithm EAGLE3
+      --speculative-draft-model-path /root/.cache/eagle/qwen3-0.6b-eagle3-sharegpt/epoch_0_step_2048
+      --speculative-num-steps 3
+      --speculative-eagle-topk 1
+      --speculative-num-draft-tokens 4
       --host 0.0.0.0
       --port 30000
       --attention-backend flashinfer
       --dtype bfloat16
-      --mem-fraction-static 0.2
       --kv-cache-dtype fp8_e4m3
-      --chunked-prefill-size 8192
-      --log-level warning
+      --mem-fraction-static 0.18
+      --context-length 2048
+      --max-total-tokens 2048
+      --max-prefill-tokens 512
+      --max-running-requests 1
+      --cuda-graph-max-bs 1
+      --tp 1
+      --trust-remote-code
       --enable-metrics
     ulimits:
       memlock: -1
@@ -78,14 +91,13 @@ services:
     networks:
       - sglang-network
     labels:
-    - "prometheus.io/scrape=true"
-    - "prometheus.io/port=29000"
-    - "prometheus.io/path=/metrics" 
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=29000"
+      - "prometheus.io/path=/metrics"
 
-  # SGLang Router with monitoring
   sglang-router:
     image: lmsysorg/sglang:latest-runtime
-    container_name: sglang-router
+    container_name: router
     restart: always
     ports:
       - 30000:30000      # Router API port
@@ -102,9 +114,9 @@ services:
     networks:
       - sglang-network
     depends_on:
-      sglang-chat:
+      native-model:
         condition: service_healthy
-      sglang-embedding:
+      eagle3-model:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
@@ -124,16 +136,16 @@ services:
         sleep 30
         curl -X POST http://sglang-router:30000/workers \\
           -H 'Content-Type: application/json' \\
-          -d '{\"url\":\"http://sglang-chat:30000\",\"model_id\":\"gemma-3-270m-it\",\"priority\":10,\"labels\":{\"tier\":\"gold\"}}'
-          
+          -d '{\"url\":\"http://native-model:30000\",\"model_id\":\"qwen3-0.6b\"}'
+
         curl -X POST http://sglang-router:30000/workers \\
           -H 'Content-Type: application/json' \\
-          -d '{\"url\":\"http://sglang-embedding:30000\",\"model_id\":\"qwen3-embedding-0.6b\",\"priority\":10,\"labels\":{\"tier\":\"gold\"}}'
-          
+          -d '{\"url\":\"http://eagle3-model:30000\",\"model_id\":\"qwen3-0.6b-eagle\"}'
+
         echo 'Workers registered successfully'
       "
     network_mode: service:sglang-router
-    
+
 volumes:
   hf_cache:
     driver: local
@@ -153,6 +165,12 @@ volumes:
       type: none
       o: bind
       device: volume/triton
+  eagle_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: speculative-decode/cache/eagle
 
 networks:
   sglang-network:

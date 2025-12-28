@@ -4,11 +4,10 @@ services:
     container_name: sglang-chat
     volumes:
       - hf_cache:/root/.cache/huggingface
-      # If you use modelscope, you need mount this directory
-      # - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
-    # network_mode: host # required by RDMA
-    privileged: false # required by RDMA
+    privileged: false
     ports:
       - 30000:30000
     entrypoint: python3 -m sglang.launch_server
@@ -27,7 +26,6 @@ services:
     ulimits:
       memlock: -1
       stack: 67108864
-    # ipc: host
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
     deploy:
@@ -42,6 +40,8 @@ services:
     container_name: sglang-embedding
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     ports:
@@ -78,6 +78,8 @@ services:
     container_name: sglang-reranker
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     ports:
@@ -112,6 +114,8 @@ services:
     container_name: sglang-multimodal
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     ports:
@@ -148,6 +152,8 @@ services:
     container_name: sglang-function
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     ports:
@@ -185,3 +191,15 @@ volumes:
       type: none
       o: bind
       device: ${HOME}/.cache/huggingface
+  fi_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: volume/flashinfer
+  tt_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: volume/triton

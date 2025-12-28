@@ -4,6 +4,8 @@ services:
     container_name: sglang-chat-prefill
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -35,6 +37,8 @@ services:
     container_name: sglang-chat-decode
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -64,21 +68,19 @@ services:
   sglang-chat-router:
     image: lmsysorg/sglang:latest-runtime
     container_name: sglang-chat-router
-    volumes:
-      - hf_cache:/root/.cache/huggingface
     restart: always
     privileged: false
     ports:
-      - 30000:8000
+      - 30000:30000
     entrypoint: python3 -m sglang_router.launch_router
     command: >
       --pd-disaggregation
       --prefill http://sglang-chat-prefill:30000
       --decode http://sglang-chat-decode:30000
       --host 0.0.0.0
-      --port 8000
+      --port 30000
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
     depends_on:
       sglang-chat-prefill:
         condition: service_healthy
@@ -92,3 +94,15 @@ volumes:
       type: none
       o: bind
       device: ${HOME}/.cache/huggingface
+  fi_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: volume/flashinfer
+  tt_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: volume/triton

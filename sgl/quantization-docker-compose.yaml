@@ -5,6 +5,8 @@ services:
     container_name: modelopt-fp8
     volumes:
       - quant_cache:/app/quantizations
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -46,6 +48,8 @@ services:
     container_name: modelopt-fp4
     volumes:
       - quant_cache:/app/quantizations
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -87,6 +91,8 @@ services:
     container_name: autoround-w4a16
     volumes:
       - quant_cache:/app/quantizations
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -127,6 +133,8 @@ services:
     container_name: autoround-awq
     volumes:
       - quant_cache:/app/quantizations
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -166,6 +174,8 @@ services:
     container_name: autoround-gptq
     volumes:
       - quant_cache:/app/quantizations
+      - fi_cache:/root/.cache/flashinfer
+      - tt_cache:/root/.triton
     restart: always
     privileged: false
     entrypoint: python3 -m sglang.launch_server
@@ -228,7 +238,7 @@ services:
       autoround-gptq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
     labels:
       - "prometheus.io/scrape=true"
       - "prometheus.io/port=29000"
@@ -274,6 +284,18 @@ volumes:
       type: none
       o: bind
       device: ./quantizations
+  fi_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: volume/flashinfer
+  tt_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: volume/triton
 
 networks:
   sglang-network:
