@@ -1,6 +1,6 @@
 services:
   sglang-chat-prefill:
-    image: lmsysorg/sglang:latest-runtime
+    image: lmsysorg/sglang:${SGLANG_PD_TAG:-latest-runtime}
     container_name: sglang-chat-prefill
     volumes:
       - hf_cache:/root/.cache/huggingface
@@ -36,7 +36,7 @@ services:
       - sglang-network
 
   sglang-chat-decode:
-    image: lmsysorg/sglang:latest-runtime
+    image: lmsysorg/sglang:${SGLANG_PD_TAG:-latest-runtime}
     container_name: sglang-chat-decode
     volumes:
       - hf_cache:/root/.cache/huggingface
@@ -72,7 +72,7 @@ services:
       - sglang-network
 
   sglang-chat-router:
-    image: lmsysorg/sglang:latest-runtime
+    image: lmsysorg/sglang:${SGLANG_PD_TAG:-latest-runtime}
     container_name: sglang-chat-router
     restart: always
     privileged: false

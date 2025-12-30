@@ -24,9 +24,16 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
 * **Start SGLang server with Docker**
 
   ```sh
+  # stable version (cuda 12)
   docker pull lmsysorg/sglang:latest-runtime
 
+  # nightly version (cuda 13)
+  docker pull lmsysorg/sglang:v0.5.6.post2-cu130-runtime
+  docker build -t lmsysorg/sglang:v0.5.6.post2-cu130-runtime-pd -f sgl/pd-dockerfile .
+
   # Set your HF_TOKEN=<token> in .env file
+  # Use `.env` SGLANG_TAG and SGLANG_PD_TAG to control image tag.
+  # Default tag is `latest-runtime`
   cat .env.example
 
   # simple case
