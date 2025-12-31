@@ -48,7 +48,7 @@ python SpecForge/scripts/prepare_data.py --dataset sharegpt
         "hidden_size": 1024,
         "initializer_range": 0.02,
         "intermediate_size": 4096,
-        "max_position_embeddings": 4096,
+        "max_position_embeddings": 40960,
         "max_window_layers": 36,
         "model_type": "llama",
         "num_attention_heads": 32,
@@ -71,7 +71,6 @@ python SpecForge/scripts/prepare_data.py --dataset sharegpt
 
 
     </details>
-
 
   * train data: `sharegpt_train_8192.jsonl`
 

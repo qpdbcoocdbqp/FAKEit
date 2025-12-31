@@ -37,12 +37,12 @@ args.target_batch_size = 1
 # sglang configs
 args.sglang_attention_backend  = "flashinfer"
 args.sglang_mem_fraction_static  = 0.4
-args.sglang_context_length = 4096 * 2
+args.sglang_context_length = 40960
 args.sglang_enable_nccl_nvls  = False
 args.sglang_enable_symm_mem  = False
 args.sglang_enable_torch_compile = True
 args.sglang_max_running_requests = 1
-args.sglang_max_total_tokens = 4096
+args.sglang_max_total_tokens = 40960
 
 # initial 
 ## node
