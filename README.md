@@ -20,45 +20,6 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   uv venv --python 3.12
   uv pip install openai requests
   ```
-
-* **Start SGLang server with Docker**
-
-  ```sh
-  # stable version (cuda 12)
-  docker pull lmsysorg/sglang:latest-runtime
-
-  # nightly version (cuda 13)
-  docker pull lmsysorg/sglang:v0.5.6.post2-cu130-runtime
-  docker build -t lmsysorg/sglang:v0.5.6.post2-cu130-runtime-pd -f sgl/pd-dockerfile .
-
-  # Set your HF_TOKEN=<token> in .env file
-  # Use `.env` SGLANG_TAG and SGLANG_PD_TAG to control image tag.
-  # Default tag is `latest-runtime`
-  cat .env.example
-
-  # simple case
-  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-chat
-  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-embedding
-  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-reranker
-  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-multimodal
-  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-function
-
-  # prefill-decode case
-  docker compose --project-directory . --env-file .env -f sgl/pd-docker-compose.yaml up -d
-
-  # qunatization case
-  docker compose --project-directory . --env-file .env -f sgl/quantization-docker-compose.yaml up -d
-
-  # speculative decoding case
-  docker compose --project-directory . --env-file .env -f sgl/sd-docker-compose.yaml up -d
-
-  ```
-
-  * **Troubleshoot: GPU OOM**
-    * `--mem-fraction-static`: GPU memory usage percentage.
-    * `--cpu-offload-gb`: offload to CPU memory.
-
-
 ### Service in docker compose
 
 * `sgl/simple-docker-compose.yaml`: simple case
@@ -120,3 +81,80 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
     | sglang-router | 30000:30000 | -                                                 |
     
   </details>
+
+
+### Start SGLang server with Docker
+
+* **Stable version (cuda 12)**
+
+  ```sh
+  # stable version (cuda 12)
+  docker pull lmsysorg/sglang:latest-runtime
+  ```
+  
+* <details> <summary> Nightly version (cuda 13) </summary>
+
+  ```sh
+  docker pull lmsysorg/sglang:v0.5.6.post2-cu130-runtime
+  docker build -t lmsysorg/sglang:v0.5.6.post2-cu130-runtime-pd -f sgl/pd-dockerfile .
+  ```
+
+</details>
+
+* **Set your HF_TOKEN=<token> in .env file**
+
+  ```sh
+  # Use `.env` SGLANG_TAG and SGLANG_PD_TAG to control image tag.
+  # Default tag is `latest-runtime`
+  cat .env.example
+  ```
+
+* <details> <summary> Simple case </summary>
+
+  ```sh
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-chat
+
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-embedding
+
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-reranker
+
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-multimodal
+
+  docker compose --project-directory . --env-file .env -f sgl/simple-docker-compose.yaml up -d sglang-function
+  ```
+
+</details>
+
+* <details> <summary> prefill-decode case </summary>
+
+  ```sh
+    docker compose --project-directory . --env-file .env -f sgl/pd-docker-compose.yaml up -d
+  ```
+
+</details>
+
+* <details> <summary> qunatization case </summary>
+
+  ```sh
+    docker compose --project-directory . --env-file .env -f sgl/quantization-docker-compose.yaml up -d
+  ```
+
+</details>
+
+* <details> <summary> speculative decoding case </summary>
+
+  ```sh
+    docker compose --project-directory . --env-file .env -f sgl/sd-docker-compose.yaml up -d
+  ```
+
+</details>
+
+* **Troubleshoot: GPU OOM**
+  * `--mem-fraction-static`: GPU memory usage percentage.
+  * `--cpu-offload-gb`: offload to CPU memory.
+
+## Google Gemini Family
+
+* **Reference**
+
+    * [Google Gemini Family](docs/google-Gemini-Family.md)
