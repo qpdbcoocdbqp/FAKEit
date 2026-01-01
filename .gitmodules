@@ -1,0 +1,4 @@
+[submodule "submodules/ocean_pearl"]
+	path = submodules/ocean_pearl
+	url = https://github.com/qpdbcoocdbqp/Ocean-Pearl.git
+	branch = main
