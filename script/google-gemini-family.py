@@ -13,14 +13,15 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoProcessor, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from typing import List
 
+
 try:
     BASE_DIR = Path(__file__).resolve().parent.parent
 except NameError:
     BASE_DIR = Path.cwd()
 
-sys.path.append(os.path.join(Path(BASE_DIR), "submodules", "ocean_pearl"))
+sys.path.append(os.path.join(Path(BASE_DIR), "submodules"))
 
-from src.theme import prettyderby
+from ocean_pearl.src.theme import prettyderby
 
 
 def parse_tool_calls(content):
