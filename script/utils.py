@@ -23,7 +23,9 @@ class GeminiFamily():
         ]
 
     image_text_model_ids = [
-        "google/t5gemma-2-270m-270m"
+        "google/t5gemma-2-270m-270m",
+        "google/gemma-3-4b-it-qat-q4_0-unquantized",
+        "google/gemma-3n-e2b-it"
         ]
     
     def __init__(self,
@@ -80,9 +82,18 @@ class GeminiFamily():
 
     def _init_image_text_model(self, model_id: str=None) -> None:
         try:
-            console.print(self.markers[1], f"Model loaded {GeminiFamily.image_text_model_ids[0]}")
-            self.image_text_processor = AutoProcessor.from_pretrained(GeminiFamily.image_text_model_ids[0], device_map="auto", use_fast=True, local_files_only=self.local_files_only)
-            self.image_text_model = AutoModelForSeq2SeqLM.from_pretrained(GeminiFamily.image_text_model_ids[0], dtype="auto", device_map="auto", local_files_only=self.local_files_only)
+            load_model_id = GeminiFamily.image_text_model_ids[-1]
+            if model_id:
+                load_model_id = self._match_model(model_id=model_id, family=GeminiFamily.image_text_model_ids)
+                if load_model_id:
+                    load_model_id = load_model_id[0]
+
+            console.print(self.markers[1], f"Model loaded {load_model_id}")
+            self.image_text_processor = AutoProcessor.from_pretrained(load_model_id, device_map="auto", use_fast=True, local_files_only=self.local_files_only)
+            if load_model_id == "google/t5gemma-2-270m-270m":
+                self.image_text_model = AutoModelForSeq2SeqLM.from_pretrained(load_model_id, dtype="auto", device_map="auto", local_files_only=self.local_files_only)
+            else:
+                self.image_text_model = AutoModelForCausalLM.from_pretrained(load_model_id, dtype="auto", device_map="auto", local_files_only=self.local_files_only)
             self.image_text_model = self.image_text_model.eval()
         except Exception as error_msg:
             console.print(self.markers[3], f"Error: {error_msg}")
@@ -172,18 +183,27 @@ class GeminiFamily():
         del processor, model
         return tool_calls, outputs
 
-    def generate_image_text(self, prompts: str, image_url: str=None, max_new_tokens: int=128):
+    def generate_image_text(self, messages: List[Dict]=None, prompts: str=None, image_url: str=None, max_new_tokens: int=128):
         image = Image.open(requests.get(image_url, stream=True).raw) if image_url else None
         with torch.inference_mode():
-            inputs = self.image_text_processor(
-                text=prompts,
-                images=image,
-                add_generation_prompt=True,
-                return_dict=True,
-                return_tensors="pt"
+            if messages:
+                inputs = self.image_text_processor.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_dict=True,
+                    return_tensors="pt",
                 )
+            else:
+                inputs = self.image_text_processor(
+                    text=prompts,
+                    images=image,
+                    add_generation_prompt=True,
+                    return_dict=True,
+                    return_tensors="pt"
+                    )
             outputs = self.image_text_model.generate(
-                **inputs.to(self.image_text_model.device),
+                **inputs.to(self.image_text_model.device, dtype=self.image_text_model.dtype),
                 max_new_tokens=max_new_tokens,
                 do_sample=True
                 )
