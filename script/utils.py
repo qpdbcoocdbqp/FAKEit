@@ -1,4 +1,8 @@
 import re
+import sys
+import os
+import random
+from pathlib import Path
 import json
 import gc
 import requests
@@ -11,6 +15,50 @@ from PIL import Image
 
 
 console = Console()
+
+class ThemeConsole:
+    def __init__(self, markers: List[str] = None):
+        self.markers = markers or ["[DEBUG]", "[INFO]", "[WARNING]", "[ERROR]", "[MESSAGE]"]
+        self._setup_path()
+        try:
+            from ocean_pearl.src.theme import prettyderby
+            self.theme = prettyderby()
+        except ImportError:
+            self.theme = {}
+
+    def _setup_path(self):
+        try:
+            # Assumes utils.py is in script/ folder, and submodules is in parent/submodules
+            base_dir = Path(__file__).resolve().parent.parent
+            module_path = os.path.join(base_dir, "submodules")
+            if module_path not in sys.path:
+                sys.path.append(module_path)
+        except NameError:
+            pass
+
+    def get_random_markers(self) -> List[str]:
+        if not self.theme:
+            return self.markers
+        
+        characters = list(self.theme.keys())
+        if not characters:
+            return self.markers
+            
+        character = random.choice(characters)
+        colors = self.theme.get(character, [])
+        
+        colored_markers = []
+        for i, mark in enumerate(self.markers):
+            if i < len(colors):
+                hex_color = colors[i].get("hex", "")
+                if hex_color:
+                    colored_markers.append(f"[{hex_color}]{mark}[/{hex_color}]")
+                else:
+                    colored_markers.append(mark)
+            else:
+                colored_markers.append(mark)
+        console.print(f"[ThemeConsole]: {character}", *colored_markers)
+        return colored_markers
 
 class GeminiFamily:
     EMBEDDING_MODEL_IDS = ["google/embeddinggemma-300m"]
@@ -76,6 +124,8 @@ class GeminiFamily:
                 load_id, 
                 dtype="auto", 
                 device_map="auto", 
+                offload_folder="offload",
+                offload_buffers=True,
                 local_files_only=self.local_files_only
             ).eval()
             
@@ -137,67 +187,65 @@ class GeminiFamily:
         return (self.text_processor or self.image_text_processor, 
                 self.text_model or self.image_text_model)
 
-    def generate(self, messages: List[Dict], schema: Dict = None, max_new_tokens: int = 128):
-        processor, model = self._get_active_model()
-        if not model: return None, None
+    def generate(self, messages: List[Dict] = None, prompts: str = None, image_url: str = None, schema: Dict = None, max_new_tokens: int = 128):
+        # 1. Determine Mode and Load Function
+        has_inline_image = False
+        if messages:
+            has_inline_image = any(
+                part.get("type") == "image"
+                for msg in messages
+                if isinstance(msg.get("content"), list)
+                for part in msg["content"]
+            )
+            
+        is_image = has_inline_image or bool(image_url)
+        if is_image:
+            if not self.image_text_model: return None, None
+            processor, model = self.image_text_processor, self.image_text_model
+        else:
+            processor, model = self._get_active_model()
+            if not model: return None, None
 
-        with torch.inference_mode():
-            # Prepare kwargs for chat template
-            template_kwargs = {
-                "add_generation_prompt": True, 
-                "return_dict": True, 
-                "return_tensors": "pt"
+        eos_token_id = getattr(processor, "eos_token_id", None)
+        if eos_token_id is None:
+            eos_token_id = processor.tokenizer.eos_token_id
+        
+        gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "pad_token_id": eos_token_id,
+            "do_sample": True
             }
-            if schema:
-                template_kwargs["tools"] = [schema]
-
-            inputs = processor.apply_chat_template(
-                messages, **template_kwargs
-            ).to(model.device)
-            
-            outputs = model.generate(
-                **inputs,
-                pad_token_id=processor.eos_token_id,
-                max_new_tokens=max_new_tokens,
-                do_sample=True
-            )
-            # Decode response, skipping input prompt
-            response = processor.decode(
-                outputs[0][inputs["input_ids"].shape[1]:], 
-                skip_special_tokens=True
-            )
-            
-        if schema:
-            return self.parse_tool_calls(response), outputs
-            
-        return response, outputs
-
-    def generate_image_text(self, messages: List[Dict] = None, prompts: str = None, image_url: str = None, max_new_tokens: int = 128):
-        if not self.image_text_model: return None, None
-        
-        image = Image.open(requests.get(image_url, stream=True).raw) if image_url else None
-        processor = self.image_text_processor
         
         with torch.inference_mode():
+            # 2. Prepare Inputs
+            template_kwargs = {"add_generation_prompt": True, "tokenize": True, "return_dict": True, "return_tensors": "pt"}
+            if schema:
+                template_kwargs.update({"tools": [schema]})
             if messages:
-                inputs = processor.apply_chat_template(
-                    messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
-                )
+                inputs = processor.apply_chat_template(messages, **template_kwargs)
             else:
-                inputs = processor(text=prompts, images=image, add_generation_prompt=True, return_dict=True, return_tensors="pt")
-            
-            inputs = inputs.to(self.image_text_model.device, dtype=self.image_text_model.dtype)
-            # Handle potential dtype mismatch for image/text
-            # if hasattr(inputs, 'pixel_values') and inputs.pixel_values is not None:
-            #     inputs.pixel_values = inputs.pixel_values.to(dtype=self.image_text_model.dtype)
+                template_kwargs.update({"text": prompts})
+                if is_image:
+                    image = Image.open(requests.get(image_url, stream=True).raw) if image_url else None
+                    template_kwargs.update({"images": image})
+                inputs = processor(**template_kwargs)
+            inputs = inputs.to(model.device)
+            if "pixel_values" in inputs:
+                inputs["pixel_values"] = inputs["pixel_values"].to(dtype=model.dtype)
 
-            outputs = self.image_text_model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=True
-            )
-            # Image models sometimes don't echo prompt or handle it differently, keeping batch_decode
-            response = processor.batch_decode(outputs, skip_special_tokens=True)[0]
+            # 3. Generate
+            outputs = model.generate(**inputs, **gen_kwargs)
+
+            # 4. Decode
+            decode_tokens = outputs[0]
+            if not is_image:
+                decode_tokens = decode_tokens[inputs["input_ids"].shape[1]:]
+            
+            response = processor.decode(decode_tokens, skip_special_tokens=True)
+
+        # 5. Post-processing
+        if schema and not is_image:
+            return self.parse_tool_calls(response), outputs
             
         return response, outputs
 

@@ -29,10 +29,10 @@
 * **Python**
 
     ```sh
-    uv venv --python 3.12
+    uv venv --python 3.13
+    uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
     uv pip install -q git+https://github.com/huggingface/transformers.git
-    uv pip install -U sentence-transformers
-    uv pip install -U bitsandbytes>=0.46.1
+    uv pip install -U  rich accelerate sentence-transformers bitsandbytes timm
     ```
 
 ## Import Submodules
