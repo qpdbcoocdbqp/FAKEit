@@ -19,11 +19,16 @@
 
     ```sh
     hf auth login
+    # embedding model
     hf download google/embeddinggemma-300m
+    # text model
     hf download google/functiongemma-270m-it
     hf download google/gemma-3-270m-it
     hf download google/gemma-3-270m-it-qat-q4_0-unquantized
+    # image-text model    
     hf download google/t5gemma-2-270m-270m
+    hf download google/gemma-3-4b-it-qat-q4_0-unquantized
+    hf download google/gemma-3n-E2B-it
     ```
 
 * **Python**
