@@ -1,4 +1,3 @@
-
 # Google Gemini family
 
 ## Prerequisites

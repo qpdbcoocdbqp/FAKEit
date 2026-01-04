@@ -367,9 +367,6 @@ class DeepseekOCRModel(DeepseekV2Model):
         self.image_newline = nn.Parameter(torch.randn(n_embed) * embed_std)
         self.view_seperator = nn.Parameter(torch.randn(n_embed) * embed_std)
 
-
-
-    
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -524,7 +521,6 @@ class DeepseekOCRForCausalLM(DeepseekV2ForCausalLM):
 
     def __init__(self, config):
         super(DeepseekV2ForCausalLM, self).__init__(config)
-        print(config)
         self.model = DeepseekOCRModel(config)
 
         self.vocab_size = config.vocab_size

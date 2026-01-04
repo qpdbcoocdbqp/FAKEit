@@ -8,7 +8,11 @@ import gc
 import requests
 import torch
 from transformers import AutoProcessor, AutoModelForCausalLM, AutoModelForSeq2SeqLM
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except RuntimeError:
+    SentenceTransformer = None
+
 from typing import List, Dict
 from rich.console import Console
 from PIL import Image
