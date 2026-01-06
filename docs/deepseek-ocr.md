@@ -4,15 +4,17 @@
 
 * **Models**
 
-    | ModelCard                                                                   | Type               |
-    | --------------------------------------------------------------------------- | ------------------ |
-    | [deepseek-ai/DeepSeek-OCR](https://huggingface.co/deepseek-ai/DeepSeek-OCR) | Image-Text-to-Text |      
+    | ModelCard                                                                                     | Type               |
+    | --------------------------------------------------------------------------------------------- | ------------------ |
+    | [deepseek-ai/DeepSeek-OCR](https://huggingface.co/deepseek-ai/DeepSeek-OCR)                   | Image-Text-to-Text |
+    | [Jalea96/DeepSeek-OCR-bnb-4bit-NF4](https://huggingface.co/Jalea96/DeepSeek-OCR-bnb-4bit-NF4) | Image-Text-to-Text |
 
 * **Huggingface**
 
     ```sh
     hf auth login
     hf download deepseek-ai/DeepSeek-OCR
+    hf download Jalea96/DeepSeek-OCR-bnb-4bit-NF4
     ```
 
 * **Python**

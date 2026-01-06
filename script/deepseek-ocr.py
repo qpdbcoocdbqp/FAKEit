@@ -114,23 +114,10 @@ def test_multimodal_embeddings(tokenizer, model, prompt: str, image_file: str, s
 
 # --- main ---
 if __name__ == "__main__":
+    import gc
     from transformers import AutoTokenizer
     from script.DeepSeekOCR.modeling_deepseekocr_refactored import DeepseekOCRForCausalLM
 
-
-    model_name = 'deepseek-ai/DeepSeek-OCR'
-    console.print(color_markers[1], f"Load model {model_name}")
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, local_files_only=True)
-    model = DeepseekOCRForCausalLM.from_pretrained(
-        model_name,
-        _attn_implementation='eager',
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
-        ignore_mismatched_sizes=True,
-        local_files_only=True
-        )
-    model = model.eval()
 
     # prepare inputs
     text = "Describe details in the image."
@@ -138,15 +125,33 @@ if __name__ == "__main__":
     image_file = "script/dev-bee.jpg"
     spatial_crop = False
 
-    # test embeddings
-    test_text_embeddings(tokenizer, model, text=text)
-    test_image_embeddings(model, image_file=image_file, spatial_crop=spatial_crop)
-    test_multimodal_embeddings(tokenizer, model, prompt=prompt, image_file=image_file, spatial_crop=spatial_crop)
+    for model_name in ["deepseek-ai/DeepSeek-OCR", "Jalea96/DeepSeek-OCR-bnb-4bit-NF4"]:
+        console.print(color_markers[1], f"Load model {model_name}")
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, local_files_only=True)
+        model = DeepseekOCRForCausalLM.from_pretrained(
+            model_name,
+            _attn_implementation='eager',
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+            ignore_mismatched_sizes=True,
+            local_files_only=True
+            )
+        model = model.eval()
 
-    # test base infer
-    # base_size=1024
-    # image_size=1024
-    # crop_mode=False
-    # eval_mode=True
-    test_base_infer(tokenizer, model, prompt=prompt, image_file=image_file)
+        # test embeddings
+        test_text_embeddings(tokenizer, model, text=text)
+        test_image_embeddings(model, image_file=image_file, spatial_crop=spatial_crop)
+        test_multimodal_embeddings(tokenizer, model, prompt=prompt, image_file=image_file, spatial_crop=spatial_crop)
 
+        # test base infer
+        # base_size=1024
+        # image_size=1024
+        # crop_mode=False
+        # eval_mode=True
+        test_base_infer(tokenizer, model, prompt=prompt, image_file=image_file)
+
+        model = None
+        gc.collect()
+        torch.cuda.empty_cache()
+        console.print(color_markers[1], "VRAM released")
