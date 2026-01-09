@@ -8,3 +8,5 @@ scrape_configs:
     static_configs:
       - targets:
           - "sglang-router:29000"
+          - "sglang-chat:30000"
+          - "sglang-embedding:30000"
