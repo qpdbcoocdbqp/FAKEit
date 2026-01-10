@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-router
+spec:
+  type: NodePort
+  ports:
+  - name: api
+    port: 30000
+    targetPort: 30000
+    nodePort: 30000
+  selector:
+    app: sglang-router
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sglang-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-router
+  template:
+    metadata:
+      labels:
+        app: sglang-router
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "29000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: sglang-router-sa
+      containers:
+      - name: sglang-router
+        image: lmsysorg/sglang:latest-runtime
+        command:
+          - python3
+          - -m
+          - sglang_router.launch_router
+          - --enable-igw
+          - --host
+          - 0.0.0.0
+          - --port
+          - "30000"
+          - --policy
+          - cache_aware
+          - --prometheus-host
+          - 0.0.0.0
+          - --prometheus-port
+          - "29000"
+          - --service-discovery
+          - --service-discovery-namespace
+          - sglang-igw
+          - --selector
+          - app=sglang-worker
+          - --service-discovery-port
+          - "30000"
+        ports:
+        - containerPort: 30000
+        - containerPort: 29000
+        livenessProbe:
+          exec:
+            command: ["curl", "-f", "http://localhost:30000/health"]
+          initialDelaySeconds: 15
+          periodSeconds: 10

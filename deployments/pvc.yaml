@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeName: hf-cache-pv
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fi-cache-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeName: fi-cache-pv
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tt-cache-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeName: tt-cache-pv
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi

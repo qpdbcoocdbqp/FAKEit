@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sglang-igw
+
+resources:
+- namespace.yaml
+- rbac.yaml
+- pvc.yaml
+- pv.yaml
+# - nvidia-runtime.yaml
+# - sglang-chat.yaml
+# - sglang-embedding.yaml
+# - sglang-router.yaml
+
+configMapGenerator:
+- name: pv-paths
+  literals:
+  - HF_CACHE_PATH=${TEMP_PATH}/.cache/huggingface
+  - FI_CACHE_PATH=${TEMP_PATH}/volume/flashinfer
+  - TT_CACHE_PATH=${TEMP_PATH}/volume/triton
+
+replacements:
+- source:
+    kind: ConfigMap
+    name: pv-paths
+    fieldPath: data.HF_CACHE_PATH
+  targets:
+  - select:
+      kind: PersistentVolume
+      name: hf-cache-pv
+    fieldPaths:
+    - spec.hostPath.path
+- source:
+    kind: ConfigMap
+    name: pv-paths
+    fieldPath: data.FI_CACHE_PATH
+  targets:
+  - select:
+      kind: PersistentVolume
+      name: fi-cache-pv
+    fieldPaths:
+    - spec.hostPath.path
+- source:
+    kind: ConfigMap
+    name: pv-paths
+    fieldPath: data.TT_CACHE_PATH
+  targets:
+  - select:
+      kind: PersistentVolume
+      name: tt-cache-pv
+    fieldPaths:
+    - spec.hostPath.path
