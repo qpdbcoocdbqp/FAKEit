@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-chat
+spec:
+  ports:
+  - name: api
+    port: 30000
+    targetPort: 30000
+  selector:
+    app: sglang-worker
+    model: gemma
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sglang-chat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-worker
+      model: gemma
+  template:
+    metadata:
+      labels:
+        app: sglang-worker
+        model: gemma
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "29000"
+        prometheus.io/path: "/metrics"
+    spec:
+      runtimeClassName: nvidia
+      containers:
+      - name: sglang-chat
+        securityContext:
+          privileged: true
+        env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        image: lmsysorg/sglang:latest-runtime
+        command: ["python3", "-m", "sglang.launch_server"]
+        args: 
+          [
+            "--model-path",
+            "google/gemma-3-270m-it-qat-q4_0-unquantized",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "30000",
+            "--attention-backend",
+            "flashinfer",
+            "--dtype",
+            "bfloat16",
+            "--mem-fraction-static",
+            "0.1",
+            "--enable-metrics"
+          ]
+        volumeMounts:
+        - name: hf-cache
+          mountPath: /root/.cache/huggingface
+        - name: fi-cache
+          mountPath: /root/.cache/flashinfer
+        - name: tt-cache
+          mountPath: /root/.triton
+        ports:
+        - containerPort: 30000
+        - containerPort: 29000
+        livenessProbe:
+          exec:
+            command: ["curl", "-f", "http://localhost:30000/health"]
+          initialDelaySeconds: 60
+          periodSeconds: 10
+      volumes:
+      - name: hf-cache
+        persistentVolumeClaim:
+          claimName: hf-cache-pvc
+      - name: fi-cache
+        persistentVolumeClaim:
+          claimName: fi-cache-pvc
+      - name: tt-cache
+        persistentVolumeClaim:
+          claimName: tt-cache-pvc

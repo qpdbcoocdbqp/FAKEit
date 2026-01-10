@@ -96,7 +96,7 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
 
   ```sh
   docker pull lmsysorg/sglang:v0.5.7-cu130-runtime
-  docker build -t lmsysorg/sglang:v0.5.7-cu130-runtime-pd -f sgl/pd-dockerfile .
+  docker build -t lmsysorg/sglang:v0.5.7-cu130-runtime-pd -f sgl/pd.dockerfile .
   ```
 
 </details>
@@ -148,6 +148,16 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
   ```
 
 </details>
+
+
+* <details> <summary> model gateway with monitering case </summary>
+
+  ```sh
+    docker compose --project-directory . --env-file .env -f deployments/igw-docker-compose.yaml up -d
+  ```
+
+</details>
+
 
 * **Troubleshoot: GPU OOM**
   * `--mem-fraction-static`: GPU memory usage percentage.
