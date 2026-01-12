@@ -48,7 +48,7 @@ kubectl get po --all-namespaces
 # kube-system   nvidia-device-plugin-daemonset-g892d   1/1     Running   0             115s
 # kube-system   storage-provisioner                    1/1     Running   1 (91s ago)   119s
 
-kubectl logs -f  nvidia-device-plugin-daemonset-g892d -n kube-system
+kubectl logs -f nvidia-device-plugin-daemonset-g892d -n kube-system
 # ...
 # 111 06:10:54.221954       1 server.go:195] Starting GRPC server for 'nvidia.com/gpu'
 # I0111 06:10:54.222586       1 server.go:139] Starting to serve 'nvidia.com/gpu' on /var/lib/kubelet/device-plugins/nvidia-gpu.sock
@@ -75,4 +75,10 @@ kubectl logs pods/gpu-verification
 kubectl delete pods gpu-verification
 # pod "gpu-verification" deleted from default namespace
 
+```
+
+## Run deployment
+
+```sh
+kubectl apply -k deployments/base
 ```
