@@ -34,8 +34,8 @@ In `wsl`,
 
 ```sh
 
-minikube start --driver docker --container-runtime docker --gpus all
-
+minikube start --driver docker --container-runtime docker --gpus all --memory=8192 --cpus=8
+kubectl describe node minikube
 kubectl get po --all-namespaces
 
 # NAMESPACE     NAME                                   READY   STATUS    RESTARTS      AGE
@@ -78,6 +78,9 @@ kubectl delete pods gpu-verification
 ```
 
 ## Run deployment
+
+* **Not recommand to use minikube to run on Windows. Because image pull to minikube is slow.**
+* **It waiting so long. I did not success yet.**
 
 ```sh
 kubectl apply -k deployments/base
