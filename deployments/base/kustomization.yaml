@@ -11,7 +11,7 @@ resources:
 # - nvidia-runtime.yaml
 # - sglang-chat.yaml
 # - sglang-embedding.yaml
-# - sglang-router.yaml
+- sglang-router.yaml
 
 configMapGenerator:
 - name: pv-paths
