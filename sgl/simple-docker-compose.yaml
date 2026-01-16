@@ -12,7 +12,7 @@ services:
       - 30000:30000
     entrypoint: python3 -m sglang.launch_server
     command: >
-      --model-path google/gemma-3-270m-it-qat-q4_0-unquantized
+      --model-path /root/.cache/huggingface/hub/models--google--gemma-3-270m-it/snapshots/ac82b4e820549b854eebf28ce6dedaf9fdfa17b3
       --attention-backend flashinfer
       --dtype bfloat16
       --context-length 2048

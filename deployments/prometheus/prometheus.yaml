@@ -10,3 +10,7 @@ scrape_configs:
           - "sglang-router:29000"
           - "sglang-chat:30000"
           - "sglang-embedding:30000"
+          # pd case
+          - "sglang-chat-router:29000"
+          - "sglang-chat-prefill:30000"
+          - "sglang-chat-decode:30000"
