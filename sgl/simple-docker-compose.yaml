@@ -37,7 +37,6 @@ services:
               capabilities: [gpu]
     networks:
       - sglang-network
-
   sglang-embedding:
     image: lmsysorg/sglang:${SGLANG_TAG:-latest-runtime}
     container_name: sglang-embedding
@@ -78,7 +77,6 @@ services:
               capabilities: [gpu]
     networks:
       - sglang-network
-
   sglang-reranker:
     image: lmsysorg/sglang:${SGLANG_TAG:-latest-runtime}
     container_name: sglang-reranker
@@ -158,7 +156,6 @@ services:
               capabilities: [gpu]
     networks:
       - sglang-network
-
   sglang-function:
     image: lmsysorg/sglang:${SGLANG_TAG:-latest-runtime}
     container_name: sglang-function
