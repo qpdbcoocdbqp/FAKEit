@@ -5,6 +5,7 @@
 *.pyc
 *.jsonl
 *.json
+*.png
 
 # devs
 cache/
