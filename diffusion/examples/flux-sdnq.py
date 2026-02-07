@@ -1,0 +1,34 @@
+import torch
+import diffusers
+from sdnq import SDNQConfig # import sdnq to register it into diffusers and transformers
+from sdnq.common import use_torch_compile as triton_is_available
+from sdnq.loader import apply_sdnq_options_to_model
+
+# load the generate pipeline
+pipe = diffusers.Flux2KleinPipeline.from_pretrained(
+    "Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
+    torch_dtype=torch.bfloat16
+    )
+
+# Enable INT8 MatMul for AMD, Intel ARC and Nvidia GPUs:
+if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
+    pipe.transformer = apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
+    pipe.text_encoder = apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
+    # pipe.transformer = torch.compile(pipe.transformer) # optional for faster speeds
+
+pipe.enable_model_cpu_offload()
+
+# generate an image with the pipeline
+# experiment with different prompts, image sizes, guidance scales, and number of inference steps to see how it affects the output image
+prompt = "A cyberpunk city reflected in a puddle, neon lights, 8k resolution"
+image = pipe(
+    prompt=prompt,
+    height=1024,
+    width=1024,
+    guidance_scale=1.0,
+    num_inference_steps=4,
+    generator=torch.manual_seed(0)
+).images[0]
+
+# save the image
+image.save("flux-klein-sdnq-4bit-dynamic.png")
