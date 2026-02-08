@@ -20,35 +20,65 @@
 
 * **SGLang run SD-turbo in Docker**
 
-  ```sh
-  # download fp16 model
-  hf download stabilityai/sd-turbo --include "*fp16.safetensors" --include "*.json" --include "*.txt"
+  * setup
+    
+    ```sh
+    # download fp16 model
+    hf download stabilityai/sd-turbo --include "*fp16.safetensors" --include "*.json" --include "*.txt"
 
-  # rename models
-  cd ~/.cache/huggingface/hub/models--stabilityai--sd-turbo/snapshots/b261bac6fd2cf515557d5d0707481eafa0485ec2
-  ln -s ./vae/diffusion_pytorch_model.fp16.safetensors ./vae/diffusion_pytorch_model.safetensors
-  ln -s ./unet/diffusion_pytorch_model.fp16.safetensors ./unet/diffusion_pytorch_model.safetensors
-  ln -s ./text_encoder/model.fp16.safetensors ./text_encoder/model.safetensors
+    # rename models
+    cd ~/.cache/huggingface/hub/models--stabilityai--sd-turbo/snapshots/b261bac6fd2cf515557d5d0707481eafa0485ec2
+    ln -s ./vae/diffusion_pytorch_model.fp16.safetensors ./vae/diffusion_pytorch_model.safetensors
+    ln -s ./unet/diffusion_pytorch_model.fp16.safetensors ./unet/diffusion_pytorch_model.safetensors
+    ln -s ./text_encoder/model.fp16.safetensors ./text_encoder/model.safetensors
+    ```
 
-  # start container
-  docker run -it --gpus all \
-  --shm-size 16g \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  lmsysorg/sglang:dev \
-  bash
+  * run image generate
 
-  # in container
-  sglang generate \
-  --model-path /root/.cache/huggingface/hub/models--stabilityai--sd-turbo/snapshots/b261bac6fd2cf515557d5d0707481eafa0485ec2 \
-  --dit-precision fp16 \
-  --vae-precision fp16 \
-  --text-encoder-precisions fp16 \
-  --prompt "A logo With Bold Large text: SGL Diffusion" \
-  --num-inference-steps 9 \
-  --guidance-scale 0.0 \
-  --save-output
+    ```sh
+    # start container
+    docker run -it --gpus all \
+    --shm-size 16g \
+    -v ~/.cache/huggingface:/root/.cache/huggingface \
+    lmsysorg/sglang:dev \
+    bash
 
-  ```
+    # in container
+    sglang generate \
+    --model-path /root/.cache/huggingface/hub/models--stabilityai--sd-turbo/snapshots/b261bac6fd2cf515557d5d0707481eafa0485ec2 \
+    --dit-precision fp16 \
+    --vae-precision fp16 \
+    --text-encoder-precisions fp16 \
+    --prompt "A logo With Bold Large text: SGL Diffusion" \
+    --num-inference-steps 9 \
+    --guidance-scale 0.0 \
+    --save-output
+    ```
+
+  * server OpenAI API - [Reference](https://github.com/sgl-project/sglang/blob/main/docs/supported_models/image_generation/diffusion_models.md#sglang-diffusion-openai-api)
+
+    ```sh
+    # start server container
+    docker run -it --gpus all \
+    --shm-size 16g \
+    -p 30000:30000 \
+    -v C:\\Users\\qpdbc\\.cache\\huggingface:/root/.cache/huggingface \
+    lmsysorg/sglang:dev \
+    python3 -m sglang.multimodal_gen.runtime.launch_server \
+    --model-path //root/.cache/huggingface/hub/models--stabilityai--sd-turbo/snapshots/b261bac6fd2cf515557d5d0707481eafa0485ec2 \
+    --port 30000 --host 0.0.0.0 \
+    --backend diffusers \
+    --dit-precision fp16 --vae-precision fp16 --text-encoder-precisions fp16 \
+    --enable-torch-compile \
+    --vae-tiling
+
+    # Additional arguments for low VRAM
+    # --text-encoder-cpu-offload --dit-cpu-offload --vae-cpu-offload \
+    # --use-fsdp-inference \
+    ```
+
+  * client OpenAI API
+    * [python client](examples/sgl-diffusion-client.py)
 
 * Python `diffuser` and `sdnq` examples
 
