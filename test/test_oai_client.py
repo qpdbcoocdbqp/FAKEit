@@ -3,6 +3,8 @@ import dotenv
 import openai
 import requests
 from rich.console import Console
+from pydantic import BaseModel
+from typing import List
 
 
 dotenv.load_dotenv()
@@ -73,19 +75,51 @@ def test_multimodal():
         max_tokens=512,
         temperature=1.5
         )
-    response_json = response.json()
+    response_json = response.model_dump()
     console.print(response_json)
+
+class MovieInfo(BaseModel):
+    title: str
+    release_year: int
+    genres: List[str]
+    rating: float
+    summary: str
 
 def test_function():
     sgl = openai.OpenAI(base_url=os.getenv("FUNCTION_BASE_URL"), api_key=os.getenv("API_KEY"))
     model_id = sgl.models.list().data[0].id
-    response = sgl.chat.completions.create(
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "get_movie_details",
+            "description": "Save movie information into the database",
+            "parameters": MovieInfo.model_json_schema()
+        }
+    }]
+    response = sgl.chat.completions.parse(
         model=model_id,
-        messages=[{"role": "user", "content": "why sky is blue?"}],
+        messages=[
+            {"role": "system", "content": "You are a professional movie database assistant. Please extract information accurately from the user's description."},
+            {"role": "user", "content": "I would like to look up 'Inception', released in 2010. It is an action and sci-fi movie with a rating of approximately 8.8. The plot is about entering dreams to steal secrets."}
+        ],
+        response_format=MovieInfo,
         max_tokens=512,
         temperature=1.5
         )
-    response_json = response.json()
+    response_json = response.model_dump()
+    response = sgl.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": "You are a professional movie database assistant. Please extract information accurately from the user's description."},
+            {"role": "user", "content": "I would like to look up 'Inception', released in 2010. It is an action and sci-fi movie with a rating of approximately 8.8. The plot is about entering dreams to steal secrets."}
+        ],
+        tools=tools,
+        tool_choice={
+            "type": "function", 
+            "function": {"name": "get_movie_details"}
+            }
+        )
+    response_json = response.model_dump()
     console.print(response_json)
 
 
