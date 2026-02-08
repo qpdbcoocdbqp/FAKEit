@@ -170,5 +170,5 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
     * [Google Gemini Family](docs/google-gemini-family.md)
 
 ## Others
-
+* [Diffusion model: image generate](diffusion/README.md)
 * [minibuke run SGLang](deployments/minikube.md)
