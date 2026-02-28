@@ -1,12 +1,6 @@
-#Rename this to extra_model_paths.yaml and ComfyUI will load it
-
-#config for comfyui
-#your base path should be either an existing comfy install or a central folder where you store all of your models, loras, etc.
-
+# config for comfyui
 comfyui:
-    base_path: C:\Users\qpdbc\.cache\huggingface\hub\
-#     # You can use is_default to mark that these folders should be listed first, and used as the default dirs for eg downloads
-#     #is_default: true
+    base_path: ~/.cache/huggingface/hub/
     checkpoints: |
         models--QuantStack--Wan2.2-TI2V-5B-GGUF/snapshots/57437632ddd08bdcbd1508c866aa22e126ed51d2
         models--befox--WAN2.2-14B-Rapid-AllInOne-GGUF/snapshots/f55c762a5bfae157e3f0ca9e9a959de53dbf2a6d/Mega-v12
@@ -15,44 +9,8 @@ comfyui:
         models--city96--t5-v1_1-xxl-encoder-gguf/snapshots/005a6ea51a7d0b84d677b3e633bb52a8c85a83d9
     clip_vision: |
         models--Comfy-Org--Wan_2.1_ComfyUI_repackaged/snapshots/06e001fc51048fb03433a6fb25334de7836704a5/split_files/clip_vision
-#     configs: models/configs/
-#     controlnet: models/controlnet/
     diffusion_models: |
         models--QuantStack--Wan2.2-TI2V-5B-GGUF/snapshots/57437632ddd08bdcbd1508c866aa22e126ed51d2
         models--befox--WAN2.2-14B-Rapid-AllInOne-GGUF/snapshots/f55c762a5bfae157e3f0ca9e9a959de53dbf2a6d/Mega-v12
-#     embeddings: models/embeddings/
-#     loras: models/loras/
-#     upscale_models: models/upscale_models/
     vae: |
         models--Comfy-Org--Wan_2.2_ComfyUI_Repackaged/snapshots/f97505f0d38bea4897c970db66cb5f97f73676de/split_files/vae
-#     audio_encoders: models/audio_encoders/
-#     model_patches: models/model_patches/
-
-#config for a1111 ui
-#all you have to do is uncomment this (remove the #) and change the base_path to where yours is installed
-
-#a111:
-#     base_path: path/to/stable-diffusion-webui/
-#     checkpoints: models/Stable-diffusion
-#     configs: models/Stable-diffusion
-#     vae: models/VAE
-#     loras: |
-#          models/Lora
-#          models/LyCORIS
-#     upscale_models: |
-#                   models/ESRGAN
-#                   models/RealESRGAN
-#                   models/SwinIR
-#     embeddings: embeddings
-#     hypernetworks: models/hypernetworks
-#     controlnet: models/ControlNet
-
-
-# For a full list of supported keys (style_models, vae_approx, hypernetworks, photomaker,
-# model_patches, audio_encoders, classifiers, etc.) see folder_paths.py.
-
-#other_ui:
-#    base_path: path/to/ui
-#    checkpoints: models/checkpoints
-#    gligen: models/gligen
-#    custom_nodes: path/custom_nodes

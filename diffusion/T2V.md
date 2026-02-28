@@ -17,12 +17,15 @@
 
     * [QuantStack/Wan2.2-TI2V-5B-GGUF](https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/blob/main/Wan2.2-TI2V-5B-Q4_K_M.gguf)
     * [befox/WAN2.2-14B-Rapid-AllInOne-GGUF](https://huggingface.co/befox/WAN2.2-14B-Rapid-AllInOne-GGUF/blob/main/Mega-v12/wan2.2-rapid-mega-aio-nsfw-v12.1-Q4_K.gguf)
+    * [Kijai/WanVideo_comfy_GGUF](https://huggingface.co/Kijai/WanVideo_comfy_GGUF/blob/main/Wan22Animate/Wan2_2_Animate_14B_Q4_K_M.gguf)
 
     ```sh
     # QuantStack/Wan2.2-TI2V-5B-GGUF
     hf download QuantStack/Wan2.2-TI2V-5B-GGUF Wan2.2-TI2V-5B-Q4_K_M.gguf
     # befox/WAN2.2-14B-Rapid-AllInOne-GGUF 
     hf download befox/WAN2.2-14B-Rapid-AllInOne-GGUF Mega-v12/wan2.2-rapid-mega-aio-nsfw-v12.1-Q4_K.gguf
+    # Kijai/WanVideo_comfy_GGUF
+    hf download Kijai/WanVideo_comfy_GGUF Wan22Animate/Wan2_2_Animate_14B_Q4_K_M.gguf
     ```
 
 * **`comfyUI/models/text_encoders`**
@@ -57,11 +60,33 @@
     hf download Comfy-Org/Wan_2.1_ComfyUI_repackaged split_files/clip_vision/clip_vision_h.safetensors
     ```
 
+* **`comfyUI/models/lora`**
+
+    * [WanAnimate - relight](https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors)
+    * [lightx2v- I2V](https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v)
+    * [Wan22_Lightx2v](https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Wan22_Lightx2v)
+    ```sh
+    # relight
+    hf download Kijai/WanVideo_comfy LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors
+    hf download Kijai/WanVideo_comfy LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16_resized_from_128_to_dynamic_22.safetensors
+    # lightx2v - I2V
+    hf download Kijai/WanVideo_comfy Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank16_bf16.safetensors
+    hf download Kijai/WanVideo_comfy Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank32_bf16.safetensors
+    # Wan22 Lightx2v
+    hf download Kijai/WanVideo_comfy LoRAs/Wan22_Lightx2v/Wan_2_2_I2V_A14B_HIGH_lightx2v_4step_lora_v1030_rank_64_bf16.safetensors
+    hf download Kijai/WanVideo_comfy LoRAs/Wan22_Lightx2v/Wan_2_2_I2V_A14B_HIGH_lightx2v_MoE_distill_lora_rank_64_bf16.safetensors
+    ```
+
 ## Workflows
 
 * [befox/WAN2.2-14B-Rapid-AllInOne-GGUF/example-workflows](https://huggingface.co/befox/WAN2.2-14B-Rapid-AllInOne-GGUF/tree/main/example-workflows)
-  * I2V: image to video
-  * T2V: text to video
+  * [I2V](comfy-workflows/wan2.2-i2v-rapid-aio-gguf-example.json): image to video
+  * [T2V](comfy-workflows/wan2.2-t2v-rapid-aio-gguf-example.json): text to video
+
+* [kijai/ComfyUI-WanVideoWrapper/example-workflows](https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/main/example_workflows)
+  * Character animation and replacement
+    * [example-1](comfy-workflows/wanvideo_WanAnimate_example_01.json)
+    * [example-2](comfy-workflows/wanvideo_WanAnimate_preprocess_example_02.json)
 
 # ComfyUI
 
