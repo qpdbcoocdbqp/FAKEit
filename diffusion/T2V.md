@@ -1,8 +1,3 @@
-<!--
-* [Wan 2.1 [GGUF] Text-to-Video & Image-to-Video in ComfyUI Tutorial + Workflow - Low VRAM GPU](https/:/youtube.com/watch?v=-JE1tt_guGE&start=0)
-* [Uncensored WAN 2.2 14B Rapid v10 in ComfyUI | All-In-One Workflow](https://www.youtube.com/watch?v=3mYfMvRJkeU)
--->
-
 ## Reference
 
 * **[Extension]**
@@ -10,6 +5,7 @@
   * [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)
   * [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite)
   * [kijai/ComfyUI-WanVideoWrapper](https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/main)
+  * [Phr00t/WAN2.2-14B-Rapid-AllInOne](https://huggingface.co/Phr00t/WAN2.2-14B-Rapid-AllInOne)
 
 ## Models
 
@@ -77,16 +73,30 @@
     hf download Kijai/WanVideo_comfy LoRAs/Wan22_Lightx2v/Wan_2_2_I2V_A14B_HIGH_lightx2v_MoE_distill_lora_rank_64_bf16.safetensors
     ```
 
+* **`comfyUI/models/detection`**
+
+    * [yolov10m](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/blob/main/process_checkpoint/det/yolov10m.onnx)
+    * [JunkyByte/easy_ViTPose](https://huggingface.co/JunkyByte/easy_ViTPose/blob/main/onnx/wholebody/vitpose-l-wholebody.onnx)
+
+    ```sh
+    hf download Wan-AI/Wan2.2-Animate-14B process_checkpoint/det/yolov10m.onnx
+    hf download JunkyByte/easy_ViTPose onnx/wholebody/vitpose-l-wholebody.onnx
+    ```
+
 ## Workflows
 
 * [befox/WAN2.2-14B-Rapid-AllInOne-GGUF/example-workflows](https://huggingface.co/befox/WAN2.2-14B-Rapid-AllInOne-GGUF/tree/main/example-workflows)
-  * [I2V](comfy-workflows/wan2.2-i2v-rapid-aio-gguf-example.json): image to video
-  * [T2V](comfy-workflows/wan2.2-t2v-rapid-aio-gguf-example.json): text to video
+  * [Image to video](comfy-workflows/wan2.2-i2v-rapid-aio-gguf-example.json): image to video
+  * [Text to video](comfy-workflows/wan2.2-t2v-rapid-aio-gguf-example.json): text to video
+  * [First last frame to video](comfy-workflows/wan2.2-flf2v-rapid-aio-gguf-example.json)
 
 * [kijai/ComfyUI-WanVideoWrapper/example-workflows](https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/main/example_workflows)
   * Character animation and replacement
     * [example-1](comfy-workflows/wanvideo_WanAnimate_example_01.json)
     * [example-2](comfy-workflows/wanvideo_WanAnimate_preprocess_example_02.json)
+      * seperate 2 components from `example-2`.
+      * [video-masking](comfy-workflows/video-masking.json)
+      * [character-replace](comfy-workflows/character-replace.json)
 
 # ComfyUI
 
