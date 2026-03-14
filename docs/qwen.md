@@ -1,10 +1,20 @@
 # Qwen
 
 * [Qwen 3.5](https://huggingface.co/collections/Qwen/qwen35)
+* [Jackrong/Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled](https://huggingface.co/Jackrong/Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled-GGUF)
+* [Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled](https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF)
+
 
     ```sh
+    # base model
     hf download bartowski/Qwen_Qwen3.5-4B-GGUF Qwen_Qwen3.5-4B-Q4_K_M.gguf
     hf download bartowski/Qwen_Qwen3.5-4B-GGUF mmproj-Qwen_Qwen3.5-4B-bf16.gguf
+    # fine-tuned 4B
+    hf download Jackrong/Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled-GGUF Qwen3.5-4B.Q4_K_M.gguf
+    hf download Jackrong/Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled-GGUF Qwen3.5-4B.BF16-mmproj.gguf
+    # fine-tuned 9B
+    hf download Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF Qwen3.5-9B.Q4_K_M.gguf
+    hf download Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF Qwen3.5-9B.BF16-mmproj.gguf
     ```
 
 * `llama.cpp` inference
@@ -22,6 +32,7 @@
     * Run models
 
       * `--chat-template-file`: add [qwen35_nonthinking.jinja](chat-template/qwen35_nonthinking.jinja) for stucture output scenario.
+      * For fine-tuned version, model can do stucture output directly.
 
         ```sh
         ./llama-server
