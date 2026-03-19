@@ -4,6 +4,7 @@
 .env
 *.pyc
 *.jsonl
+*.wav
 sglang-dashboard.json
 qwen3-0.6b-eagle3.json
 
@@ -11,6 +12,9 @@ qwen3-0.6b-eagle3.json
 cache/
 volume/
 dev/
+tmp/
+
+# custom
 dev.md
 dev.py
 dev-*
