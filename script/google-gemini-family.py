@@ -90,7 +90,7 @@ def test_image_generate():
             {"type": "image", "image": image_url}
             ]}
     ]
-    models_id = ["google/t5gemma-2-270m-270m" , "google/gemma-3-4b-it-qat-q4_0-unquantized", "google/gemma-3n-e2b-it"]
+    models_id = ["google/t5gemma-2-270m-270m" , "google/gemma-4-E4B-it"]
     for model_id in models_id:
         GF = GeminiFamily(model_id=model_id, enable_image_text_generate=True, markers=color_markers)
         if model_id == "google/t5gemma-2-270m-270m":
