@@ -56,3 +56,22 @@
 cd FAKEit
 python -m script.google-gemini-family
 ```
+
+## Reference
+
+* [Gemma 4 Usage Guide](https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html)
+  * [docker - vllm/vllm-openai](https://hub.docker.com/r/vllm/vllm-openai/tags)
+
+    ```bash
+    docker pull vllm/vllm-openai:v0.19.0-cu130-ubuntu2404
+    docker run -it --gpus=all \
+    -v '$HOME/.cache/huggingface:/root/.cache/huggingface' \
+    --entrypoint '' \
+    -u 0 \
+    docker.io/vllm/vllm-openai:v0.19.0-cu130-ubuntu2404 bash
+
+    ls /models
+    pip install -U transformers==5.5.0
+    vllm serve google/gemma-4-E2B-it --max-model-len 8192
+    # TBD OOM (8GB VRAM device)
+    ```
