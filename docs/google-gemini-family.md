@@ -68,10 +68,20 @@ python -m script.google-gemini-family
     -v '$HOME/.cache/huggingface:/root/.cache/huggingface' \
     --entrypoint '' \
     -u 0 \
-    docker.io/vllm/vllm-openai:v0.19.0-cu130-ubuntu2404 bash
+    docker.io/vllm/vllm-openai:gemma4-cu130 bash
 
-    ls /models
-    pip install -U transformers==5.5.0
-    vllm serve google/gemma-4-E2B-it --max-model-len 8192
+    ls //root/.cache/huggingface
+    vllm serve \
+        --model google/gemma-4-E2B-it \
+        --tensor-parallel-size 1 \
+        --max-model-len 4096 \
+        --max-num-seqs 1 \
+        --gpu-memory-utilization 0.7 \
+        --cpu-offload-gb 4 \
+        --kv-offloading-size 4 \
+        --kv-offloading-backend native \
+        --trust_remote_code \
+        --enforce-eager \
+        --host 0.0.0.0 --port 8000
     # TBD OOM (8GB VRAM device)
     ```
