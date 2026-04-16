@@ -59,29 +59,19 @@ python -m script.google-gemini-family
 
 ## Reference
 
-* [Gemma 4 Usage Guide](https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html)
-  * [docker - vllm/vllm-openai](https://hub.docker.com/r/vllm/vllm-openai/tags)
+* Gemma 4 - [llama.cpp](https://github.com/ggml-org/llama.cpp)
 
     ```bash
-    docker pull vllm/vllm-openai:v0.19.0-cu130-ubuntu2404
-    docker run -it --gpus=all \
-    -v '$HOME/.cache/huggingface:/root/.cache/huggingface' \
-    --entrypoint '' \
-    -u 0 \
-    docker.io/vllm/vllm-openai:gemma4-cu130 bash
-
-    ls //root/.cache/huggingface
-    vllm serve \
-        --model google/gemma-4-E2B-it \
-        --tensor-parallel-size 1 \
-        --max-model-len 4096 \
-        --max-num-seqs 1 \
-        --gpu-memory-utilization 0.7 \
-        --cpu-offload-gb 4 \
-        --kv-offloading-size 4 \
-        --kv-offloading-backend native \
-        --trust_remote_code \
-        --enforce-eager \
-        --host 0.0.0.0 --port 8000
-    # TBD OOM (8GB VRAM device)
+    ./llama-server
+    --host 127.0.0.1
+    --port 9006
+    --model /models/models--ggml-org--gemma-4-E4B-it-GGUF/snapshots/6b352c53e1d2e4bb974d9f8cafcf85887c224219/gemma-4-e4b-it-Q4_K_M.gguf
+    --mmproj /models/models--ggml-org--gemma-4-E4B-it-GGUF/snapshots/6b352c53e1d2e4bb974d9f8cafcf85887c224219/mmproj-gemma-4-e4b-it-f16.gguf
+    --threads 1 --parallel 1 --ubatch-size 512
+    --ctx-size 16384 -ctk q4_0 -ctv q4_0
+    -ngl 43  -fa on --no-mmproj-offload
+    --reasoning-budget 0
+    --cache-ram 0
+    --jinja
+    --chat-template-kwargs '{"enable_thinking": false}'
     ```
