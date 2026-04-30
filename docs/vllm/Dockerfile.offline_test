@@ -1,8 +1,8 @@
 # Stage 1: Online Preparation
 FROM almalinux:8 AS downloader
 
-# Install basic tools required for downloading
-RUN dnf install -y git wget curl python3 python3-pip && dnf clean all
+# Install basic tools required for downloading and building
+RUN dnf install -y git wget curl python3 python3-pip cmake gcc-toolset-12 && dnf clean all
 
 WORKDIR /build
 RUN mkdir -p ./vllm-offline/wheels/build \
@@ -19,8 +19,8 @@ WORKDIR /build/vllm-offline
 # 1.2 Download vLLM Source Code
 RUN git clone https://github.com/vllm-project/vllm.git ./source/vllm
 
-# 1.3 Download CUDA Toolkit
-RUN wget -q https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
+# 1.3 Download CUDA Toolkit (RPM for RHEL/AlmaLinux 8)
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/12.9.0/local_installers/cuda-repo-rhel8-12-9-local-12.9.0_575.51.03-1.x86_64.rpm -P ./cuda
 
 # 1.4 Download CUTLASS
 RUN git clone https://github.com/nvidia/cutlass.git ./cutlass && \
@@ -33,6 +33,9 @@ RUN git clone https://github.com/openai/triton.git ./triton && \
 # 1.8 Download uv Package Manager script
 RUN curl -LsSf https://astral.sh/uv/install.sh -o install_uv.sh
 
+# 1.9 Download a modern CMake (vLLM requires 3.21+)
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-linux-x86_64.tar.gz
+
 # Install uv temporarily in the downloader stage to fetch python packages
 ENV PATH="/root/.local/bin:${PATH}"
 RUN sh install_uv.sh
@@ -44,10 +47,9 @@ RUN uv pip download torch torchvision torchaudio \
     -d ./torch
 
 # 1.7 Download Python Dependencies
-RUN uv pip download --python 3.12 -r ./source/vllm/requirements/build/cuda.txt -d ./wheels/build && \
-    uv pip download --python 3.12 -r ./source/vllm/requirements/cuda.txt -d ./wheels/runtime && \
-    uv pip download --python 3.12 -r ./source/vllm/requirements/common.txt -d ./wheels/common
-
+RUN python3 -m pip download -r ./source/vllm/requirements/build/cuda.txt -d ./wheels/build && \
+    python3 -m pip download -r ./source/vllm/requirements/cuda.txt -d ./wheels/runtime && \
+    python3 -m pip download -r ./source/vllm/requirements/common.txt -d ./wheels/common
 
 # Stage 2: Offline Environment
 FROM almalinux:8 AS offline_env
