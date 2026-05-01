@@ -1,46 +1,34 @@
-# uv pip install -U transformers==5.5.0
-# uv pip install -U torch torchvision --index-url https://download.pytorch.org/whl/cu130
+# For llama.cpp tag b8783, support for audio input was added to the Gemma-4-E2B-it model.
+# Audio example: [PolyAI/minds14] https://huggingface.co/datasets/PolyAI/minds14
 
-import torch
-from transformers import AutoTokenizer, AutoProcessor, AutoModelForCausalLM
+import openai
+import base64
 
-torch.cuda.is_available()
-
+# Initialize the OpenAI client pointing to your local llama.cpp server
+client = openai.OpenAI(
+    base_url="http://localhost:9006/v1",
+    api_key="not-needed"
+    )
 
 MODEL_ID = "google/gemma-4-E2B-it"
 
-# Load model
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-processor = AutoProcessor.from_pretrained(MODEL_ID)
-model = AutoModelForCausalLM.from_pretrained(MODEL_ID, dtype=torch.bfloat16, device_map="auto")
+# Load and encode your audio file
+audio_path = "tmp/audio_input.wav"
+with open(audio_path, "rb") as audio_file:
+    audio_data = base64.b64encode(audio_file.read()).decode("utf-8")
 
-for param in model.parameters():
-    print(param.device)
+# Send the request
+response = client.chat.completions.create(
+    model=MODEL_ID,
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Transcribe or analyze this audio:"},
+                {"type": "input_audio", "input_audio": {"data": audio_data, "format": "wav"}}
+            ]
+        }
+    ]
+)
 
-# Prompt - add audio before text
-messages = [
-    {
-        "role": "user",
-        "content": [
-            {"type": "audio", "audio": "https://raw.githubusercontent.com/google-gemma/cookbook/refs/heads/main/Demos/sample-data/journal1.wav"},
-            {"type": "text", "text": "Transcribe the following speech segment in its original language. Follow these specific instructions for formatting the answer:\n* Only output the transcription, with no newlines.\n* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."},
-        ]
-    }
-]
-
-# Process input
-inputs = processor.apply_chat_template(
-    messages,
-    tokenize=True,
-    return_dict=True,
-    return_tensors="pt",
-    add_generation_prompt=True,
-).to(model.device)
-input_len = inputs["input_ids"].shape[-1]
-
-# Generate output
-outputs = model.generate(**inputs, max_new_tokens=512)
-response = processor.decode(outputs[0][input_len:], skip_special_tokens=False)
-
-# Parse output
-processor.parse_response(response)
+print(response.choices[0].message.content)
