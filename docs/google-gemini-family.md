@@ -6,6 +6,7 @@
 
     | ModelCard                                                                                                         | Type                |
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
+    | [yuxinlu1/gemma-4-12B-it-Claude-4.6-4.8-Opus-GGUF](https://huggingface.co/yuxinlu1/gemma-4-12B-it-Claude-4.6-4.8-Opus-GGUF)                               |  Text Generation          |
     | [ggml-org/gemma-4-E4B-it-GGUF](https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF)                               | Any to Any          |
     | [google/embeddinggemma-300m](https://huggingface.co/google/embeddinggemma-300m)                                   | Sentence Similarity |
     | [google/functiongemma-270m-it](https://huggingface.co/google/functiongemma-270m-it)                               | Text Generation     |
@@ -31,6 +32,7 @@
     hf download google/gemma-3n-E2B-it
     # any to any
     hf download ggml-org/gemma-4-E4B-it-GGUF gemma-4-e4b-it-Q4_K_M.gguf mmproj-gemma-4-e4b-it-f16.gguf
+    hf download yuxinlu1/gemma-4-12B-it-Claude-4.6-4.8-Opus-GGUF gemma4-opus48-Q4_K_M.gguf
     ```
 
 * **Python**
