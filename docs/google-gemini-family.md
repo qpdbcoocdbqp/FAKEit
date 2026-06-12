@@ -6,7 +6,8 @@
 
     | ModelCard                                                                                                         | Type                |
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
-    | [yuxinlu1/gemma-4-12B-it-Claude-4.6-4.8-Opus-GGUF](https://huggingface.co/yuxinlu1/gemma-4-12B-it-Claude-4.6-4.8-Opus-GGUF)                               |  Text Generation          |
+    | [google/gemma-4-12B-it-qat-q4_0-gguf](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)                 | Image-Text-to-Text  |
+    | [google/gemma-4-E4B-it-qat-q4_0-gguf](https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf)                 | Any to Any          |
     | [ggml-org/gemma-4-E4B-it-GGUF](https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF)                               | Any to Any          |
     | [google/embeddinggemma-300m](https://huggingface.co/google/embeddinggemma-300m)                                   | Sentence Similarity |
     | [google/functiongemma-270m-it](https://huggingface.co/google/functiongemma-270m-it)                               | Text Generation     |
