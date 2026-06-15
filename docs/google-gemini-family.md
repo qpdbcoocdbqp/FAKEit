@@ -8,6 +8,7 @@
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
     | [unsloth/gemma-4-12B-it-qat-GGUF:gemma-4-12B-it-qat-UD-Q4_K_XL.gguf](https://huggingface.co/unsloth/gemma-4-12B-it-qat-GGUF) | Image-Text-to-Text  |
     | [google/gemma-4-12B-it-qat-q4_0-gguf](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)                 | Image-Text-to-Text  |
+    | [unsloth/gemma-4-E4B-it-qat-GGUF:gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF) |  Any to Any |
     | [google/gemma-4-E4B-it-qat-q4_0-gguf](https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf)                 | Any to Any          |
     | [ggml-org/gemma-4-E4B-it-GGUF](https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF)                               | Any to Any          |
     | [google/embeddinggemma-300m](https://huggingface.co/google/embeddinggemma-300m)                                   | Sentence Similarity |
@@ -21,8 +22,7 @@
     | ModelCard                                                                                                         | Type                | TPS |
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- | --- |
     | [unsloth/gemma-4-12B-it-qat-GGUF:mtp-gemma-4-12B-it.gguf](https://huggingface.co/unsloth/gemma-4-12B-it-qat-GGUF) | Draft model | 32.23 t/s -> 72.25 t/s|
-    | [Janvitos/gemma-4-12B-it-qat-assistant-MTP-Q8_0-GGUF](https://huggingface.co/Janvitos/gemma-4-12B-it-qat-assistant-MTP-Q8_0-GGUF)| Draft model  |32.23 t/s -> 61.79 t/s|
-    | [cascade-tech/gemma-4-E4B-it-qat-q4_0-unquantized-assistant-gguf](https://huggingface.co/cascade-tech/gemma-4-E4B-it-qat-q4_0-unquantized-assistant-gguf)| Draft model|79.34 t/s -> 96.89 t/s |
+    | [unsloth/gemma-4-E4B-it-qat-GGUF:mtp-gemma-4-E4B-it](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF) | Draft model |79.34 t/s -> 71.05 ~ 153.90 t/s |
 
 * **Huggingface**
 
@@ -90,12 +90,13 @@ python -m script.google-gemini-family
     ./llama-server
     --host 127.0.0.1
     --port 9006
-    --model /models/models--google--gemma-4-E4B-it-qat-q4_0-gguf/snapshots/bb3b92e6f031fa438b409f898dd9f14f499a0cb0/gemma-4-E4B_q4_0-it.gguf
-    --mmproj /models/models--google--gemma-4-E4B-it-qat-q4_0-gguf/snapshots/bb3b92e6f031fa438b409f898dd9f14f499a0cb0/gemma-4-E4B-it-mmproj.gguf
-    --model-draft /models/models--cascade-tech--gemma-4-E4B-it-qat-q4_0-unquantized-assistant-gguf/snapshots/3fd2bebe459bbbfc4161c32e91cf4cef4b568b93/gemma-4-E4B-it-qat-assistant-bf16.gguf
+    --model /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf
+    --mmproj /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/mmproj-BF16.gguf
+    --model-draft /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/mtp-gemma-4-E4B-it.gguf
+    --spec-type draft-mtp --spec-draft-n-max 4
+    --threads 2 --parallel 1 -fa off --n-gpu-layers 49
     --spec-type draft-mtp
     --spec-draft-n-max 2
-    --threads 2 --parallel 1 -fa off --ngl 48
     --reasoning on
     --cache-ram 0
     --jinja
