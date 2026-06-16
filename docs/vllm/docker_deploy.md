@@ -3,15 +3,15 @@
 ## Deploy
 
 ```bash
-# <!-- 2026-06-10 -->
-docker pull vllm/vllm-openai:latest-ubuntu2404
+# <!-- 2026-06-16 -->
+docker pull vllm/vllm-openai:v0.23.0-ubuntu2404
 
-# version check, vllm  0.22.1
+# version check, vllm  0.23.0
 docker run --rm -it \
 --gpus=all \
 --name infos \
 --entrypoint '' \
-vllm/vllm-openai:latest-ubuntu2404 bash -c 'nvidia-smi && nvcc --version && vllm --version'
+vllm/vllm-openai:v0.23.0-ubuntu2404 bash -c 'nvidia-smi && nvcc --version && vllm --version'
 
 # $LLAMA_SWAP=<your llama-swap path>
 docker run -itd \
@@ -21,7 +21,7 @@ docker run -itd \
 -v "/$HOME/.cache/huggingface/hub:/models" \
 --name vllm \
 --entrypoint '' \
-vllm/vllm-openai:latest-ubuntu2404 \
+vllm/vllm-openai:v0.23.0-ubuntu2404 \
 bash -c '/app/llama-swap -config /app/vllm.yaml -listen 0.0.0.0:8080'
 
 ```

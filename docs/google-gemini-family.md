@@ -6,6 +6,8 @@
 
     | ModelCard                                                                                                         | Type                |
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
+    |[yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF gemma4-coding-Q4_K_M.gguf]()| Image-Text-to-Text  |
+    |[sakamakismile/gemma-4-12B-coder-fable5-composer2.5-MTP-NVFP4](https://huggingface.co/sakamakismile/gemma-4-12B-coder-fable5-composer2.5-MTP-NVFP4)| Image-Text-to-Text  |
     | [unsloth/gemma-4-12B-it-qat-GGUF:gemma-4-12B-it-qat-UD-Q4_K_XL.gguf](https://huggingface.co/unsloth/gemma-4-12B-it-qat-GGUF) | Image-Text-to-Text  |
     | [google/gemma-4-12B-it-qat-q4_0-gguf](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)                 | Image-Text-to-Text  |
     | [unsloth/gemma-4-E4B-it-qat-GGUF:gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF) |  Any to Any |
@@ -23,6 +25,8 @@
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- | --- |
     | [unsloth/gemma-4-12B-it-qat-GGUF:mtp-gemma-4-12B-it.gguf](https://huggingface.co/unsloth/gemma-4-12B-it-qat-GGUF) | Draft model | 32.23 t/s -> 72.25 t/s|
     | [unsloth/gemma-4-E4B-it-qat-GGUF:mtp-gemma-4-E4B-it](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF) | Draft model |79.34 t/s -> 71.05 ~ 153.90 t/s |
+
+
 
 * **Huggingface**
 
