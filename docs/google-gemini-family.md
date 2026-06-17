@@ -105,3 +105,25 @@ python -m script.google-gemini-family
     --cache-ram 0
     --jinja
     ```
+
+* DiffusionGemma
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp source/llama.cpp
+
+MSYS_NO_PATHCONV=1 docker run -it \
+--gpus=all --shm-size=8gb \
+-v "$(pwd)/source/llama.cpp:/source/" \
+--name builder \
+--entrypoint '' \
+ghcr.io/ggml-org/llama.cpp:server-cuda12-b9603 bash
+
+cd /source
+# check out the DiffusionGemma PR (#24423)
+git fetch origin pull/24423/head:diffusiongemma && git checkout diffusiongemma
+apt update -y && apt install cmake build-essential cuda-toolkit -y
+
+# build with CUDA (drop -DGGML_CUDA=ON for a CPU-only build)
+cmake -B build -DGGML_CUDA=ON
+cmake --build build -j 2 --config Release --target llama-diffusion-cli
+```
