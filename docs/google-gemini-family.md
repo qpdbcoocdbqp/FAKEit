@@ -27,6 +27,10 @@
     | [unsloth/gemma-4-E4B-it-qat-GGUF:mtp-gemma-4-E4B-it](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF) | Draft model |79.34 t/s -> 71.05 ~ 153.90 t/s |
 
 
+    | ModelCard                                                                                                         | Type                |
+    | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
+    | [unsloth/diffusiongemma-26B-A4B-it-GGUF](https://huggingface.co/unsloth/diffusiongemma-26B-A4B-it-GGUF)| Diffusion model |
+
 
 * **Huggingface**
 
@@ -108,15 +112,24 @@ python -m script.google-gemini-family
 
 * DiffusionGemma
 
+  - [unsloth/diffusiongemma-26B-A4B-it-GGUF](https://huggingface.co/unsloth/diffusiongemma-26B-A4B-it-GGUF)
+
 ```bash
+# download
+hf download unsloth/diffusiongemma-26B-A4B-it-GGUF diffusiongemma-26B-A4B-it-Q4_K_M.gguf
+
+# pr build
 git clone https://github.com/ggml-org/llama.cpp source/llama.cpp
 
 MSYS_NO_PATHCONV=1 docker run -it \
 --gpus=all --shm-size=8gb \
 -v "$(pwd)/source/llama.cpp:/source/" \
+-v "$HOME/.cache/huggingface/hub:/models" \
 --name builder \
 --entrypoint '' \
-ghcr.io/ggml-org/llama.cpp:server-cuda12-b9603 bash
+vllm/vllm-openai:v0.23.0-ubuntu2404 bash
+
+# ghcr.io/ggml-org/llama.cpp:server-cuda12-b9603 bash
 
 cd /source
 # check out the DiffusionGemma PR (#24423)
@@ -126,4 +139,10 @@ apt update -y && apt install cmake build-essential cuda-toolkit -y
 # build with CUDA (drop -DGGML_CUDA=ON for a CPU-only build)
 cmake -B build -DGGML_CUDA=ON
 cmake --build build -j 2 --config Release --target llama-diffusion-cli
+
+# run model
+/source/build/bin/llama-diffusion-cli \
+-m /models/models--unsloth--diffusiongemma-26B-A4B-it-GGUF/snapshots/aab0a2972da0e41310fbcca5ea63fc47eb932a71/diffusiongemma-26B-A4B-it-Q4_K_M.gguf \
+-ngl 99 -cnv -n 2048 --diffusion-visual -lv 4
+
 ```
