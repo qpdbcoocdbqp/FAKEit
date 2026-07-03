@@ -8,6 +8,7 @@
 *.zst
 *.tgz
 *.tar
+*.bin
 sglang-dashboard.json
 qwen3-0.6b-eagle3.json
 
