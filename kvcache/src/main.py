@@ -364,6 +364,33 @@ if __name__ == "__main__":
 
     # Example llama.cpp slot save output
     kv_binary = "slot1.bin"
+    # Ensure slot1.bin exists to avoid FileNotFoundError
+    with open(kv_binary, "wb") as f:
+        f.write(b"dummy kv cache binary data " * 1024)
+
+    # A long system prompt containing more than 256 words/tokens
+    long_system_prompt = (
+        "You are a helpful and extremely detail-oriented coding assistant. "
+        "Your goal is to provide clean, robust, and well-documented code examples. "
+        "When writing Python code, make sure to use type hints, write docstrings, "
+        "and handle potential exceptions. Always follow clean code principles. "
+    ) * 30  # Repeating to ensure it easily exceeds 256 tokens/words
+
+    messages = [
+        {
+            "role": "system",
+            "content": long_system_prompt
+        },
+        {
+            "role": "user",
+            "content": "Write a Python HTTP server."
+        }
+    ]
+
+    tokenized_prompt = (
+        canonicalize_messages(messages)
+        .split()
+    )
 
     result = storage.save_cache(
         model_name="qwen3-14b",
