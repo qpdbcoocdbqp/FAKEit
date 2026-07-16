@@ -5,6 +5,14 @@
 
 - [Tutorial: KV cache reuse with llama-server #13606](https://github.com/ggml-org/llama.cpp/discussions/13606)
 
+- [`LMCache`](https://github.com/LMCache/LMCache)
+
+```bash
+uv pip install lmcache
+python lmcache_dev.py
+python lmcache_dev.py --skip-engine
+
+```
 
 Next extensions：
 
