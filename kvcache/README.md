@@ -21,7 +21,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -it \
 --runtime nvidia --gpus all \
 -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
 -e VLLM_WSL2_ENABLE_PIN_MEMORY=1 \
--p 8000:8000 \
+-p 18001:8000 \
 --ipc=host \
 lmcache/vllm-openai:latest \
 Qwen/Qwen3-0.6B \
