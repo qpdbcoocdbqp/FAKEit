@@ -2,6 +2,7 @@ import time
 import openai
 
 client = openai.OpenAI(base_url="http://localhost:18001/v1", api_key="***")
+print(client.models.list())
 
 # Long shared prefix
 prefix = (
