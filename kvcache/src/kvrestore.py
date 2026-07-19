@@ -167,10 +167,7 @@ def test_kv_cache_efficacy(
     # Unload model again to make sure the in-memory cache is empty before restoring from file
     unload_model(base_url, model_name)
     
-    # Reload model BEFORE restoring slot to exclude model load time
-    ensure_model_loaded(base_url, model_name)
-    
-    # Trigger restore action via API
+    # Trigger restore action via API (this will auto-load the model if unloaded, without polluting the slot)
     restore_url = f"{base_url}/upstream/{model_name}/slots/{slot_id}?action=restore"
     restore_payload = {"filename": restored_filename}
     restore_req = urllib.request.Request(
@@ -201,7 +198,7 @@ def test_kv_cache_efficacy(
 if __name__ == "__main__":
     test_kv_cache_efficacy(
         base_url="http://localhost:19001",
-        model_name="luna",
+        model_name="sonnet",
         slot_id=0,
-        slots_dir_on_server="./tmp/luna"
+        slots_dir_on_server="./tmp/sonnet"
     )
