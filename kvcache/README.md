@@ -6,6 +6,7 @@
 - [Tutorial: KV cache reuse with llama-server #13606](https://github.com/ggml-org/llama.cpp/discussions/13606)
 
 - [`LMCache`](https://github.com/LMCache/LMCache)
+    - [kvcache_sdk](https://github.com/LMCache/LMCache/tree/dev/examples/kvcache_sdk)
 
 ```
 

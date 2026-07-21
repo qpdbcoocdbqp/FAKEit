@@ -14,12 +14,15 @@ services:
     entrypoint: []
     command: >
       python3 -m lmcache.v1.multiprocess.http_server --l1-size-gb 1 --eviction-policy LRU --max-workers 1 --host 0.0.0.0 --port 6555 --http-port 8080
+      --enable-tracing --otlp-endpoint http://otel-collector:4320
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:8080/healthcheck || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - lmcache-net
 
   vllm-serve:
     image: lmcache/vllm-openai:latest
@@ -37,3 +40,9 @@ services:
       Qwen/Qwen3-0.6B --gpu-memory-utilization 0.3 --max-model-len 2048 --max-num-seqs 1 --kv-transfer-config '{"kv_connector":"LMCacheMPConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://lmcache-server", "lmcache.mp.port": 6555, "lmcache.mp.mq_timeout": 10, "lmcache.mp.mp_transfer_mode": "engine_driven"}}'
     depends_on:
       - lmcache-server
+    networks:
+      - lmcache-net
+
+networks:
+  lmcache-net:
+    driver: bridge
