@@ -1,5 +1,4 @@
 services:
-
   # OTel Collector — receives OTLP from LMCache, fans out to Tempo + Prometheus
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest

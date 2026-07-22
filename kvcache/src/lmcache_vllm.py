@@ -18,8 +18,8 @@ def timed_call():
     client.chat.completions.create(
         model="Qwen/Qwen3-0.6B",
         messages=messages,
-        max_tokens=1,
-        temperature=0,
+        max_tokens=512,
+        temperature=0.7,
     )
     return time.perf_counter() - t0
 
