@@ -7,6 +7,7 @@
 
 - [`LMCache`](https://github.com/LMCache/LMCache)
     - [kvcache_sdk](https://github.com/LMCache/LMCache/tree/dev/examples/kvcache_sdk)
+    - [sgl_integration](https://github.com/LMCache/LMCache/tree/dev/examples/sgl_integration)
 
 ```
 
