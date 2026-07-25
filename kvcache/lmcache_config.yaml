@@ -1,3 +1,4 @@
 # LMCache MP mode: SGLang connects to the standalone LMCache server.
-mp_host: lmcache-server
+mp_host: localhost
 mp_port: 6555
+enable_blending: false
