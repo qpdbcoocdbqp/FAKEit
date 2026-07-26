@@ -19,6 +19,8 @@ services:
     command: |
       python3 -m lmcache.v1.multiprocess.http_server
       --l1-size-gb 1
+      --chunk-size 256 
+      --no-l1-use-lazy
       --eviction-policy LRU
       --max-workers 1
       --host 0.0.0.0
@@ -44,6 +46,8 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_WSL2_ENABLE_PIN_MEMORY=1
+      - VLLM_ENABLE_V1_MULTIPROCESSING=0
+      - VLLM_BATCH_INVARIANT=1
     ipc: host
     ports:
       - 18001:8000
@@ -54,7 +58,7 @@ services:
       --gpu-memory-utilization 0.3
       --max-model-len 3096
       --max-num-seqs 1
-      --kv-transfer-config '{"kv_connector":"LMCacheMPConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://lmcache-server", "lmcache.mp.port": 6555, "lmcache.mp.mq_timeout": 10, "lmcache.mp.mp_transfer_mode": "engine_driven"}}'
+      --kv-transfer-config '{"kv_connector":"LMCacheMPConnector", "kv_role":"kv_both", "kv_load_failure_policy":"recompute", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://lmcache-server", "lmcache.mp.port": 6555, "lmcache.mp.mq_timeout": 10, "lmcache.mp.mp_transfer_mode": "engine_driven"}}'
       --no-enable-prefix-caching
       --enforce-eager
     depends_on:
