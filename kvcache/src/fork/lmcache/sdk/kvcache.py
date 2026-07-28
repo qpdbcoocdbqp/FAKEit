@@ -125,20 +125,29 @@ class LMCacheKVCacheContext:
         block_size = int(entry["block_size"])
         use_mla = bool(entry["use_mla"])
         dtype = getattr(torch, entry["dtypes"][0].replace("torch.", ""))
-        shape = torch.Size(entry["shapes"][0])  # e.g. [2, num_layers, chunk_size, hidden_dim_size]
+        shape = torch.Size(entry["shapes"][0])
         if use_mla:
             num_layers, chunk_size_dim, hidden_dim_size = shape
         else:
             _, num_layers, chunk_size_dim, hidden_dim_size = shape
+
         self.blocks_in_chunk = self._chunk_size // block_size
-        per_layer_shape = (
-            (self._chunk_size, hidden_dim_size) if use_mla else (2, self._chunk_size, hidden_dim_size)
-        )
+
+        if use_mla:
+            # [NB, BS, HS]  -> ndim=3, detector reads this as MLA correctly
+            per_layer_shape = (self.blocks_in_chunk, block_size, hidden_dim_size)
+        else:
+            # [2, NB, NH, BS, HS] -> ndim=5, K/V axis first (shape[0]==2),
+            # NH hardcoded to 1 (same trick used on the GPU path) so HS
+            # stays as the full hidden_dim_size.
+            per_layer_shape = (2, self.blocks_in_chunk, 1, block_size, hidden_dim_size)
+
         self._kv_caches = {
             f"layer.{i}": torch.zeros(per_layer_shape, dtype=dtype, device="cpu")
             for i in range(num_layers)
         }
         return block_size, hidden_dim_size
+
 
     def register_kv_caches(
         self,
@@ -261,6 +270,11 @@ class LMCacheKVCacheContext:
     def chunk_size(self) -> int:
         """Return the chunk size of the context."""
         return self._chunk_size
+
+    @property
+    def use_mla(self) -> bool:
+        """Return True if the registered layout uses MLA (single fused K/V plane)."""
+        return self.transfer_ctx._context.metadata.use_mla
 
     @property
     def mq_timeout(self) -> float:
@@ -527,7 +541,10 @@ def retrieve(
         worker_id=0,
     )
     try:
-        return ctx.transfer_ctx.retrieve(key, ctx.instance_id)
+        result = ctx.transfer_ctx.retrieve(key, ctx.instance_id)
+        # MLA: server returns chunks of shape [L, C, D]; after cat along dim=1
+        # the tensor is [L, hit_tokens, D].  Non-MLA returns [2, L, hit_tokens, D].
+        return result
     finally:
         ctx.end_session(request_id)
 
@@ -540,24 +557,48 @@ def store(
 ) -> bool:
     """Store KV cache tensors for the given token IDs.
 
+    Accepts two input formats depending on whether the model uses MLA:
+
+    - Non-MLA: ``kv`` shape ``[2, L, T, D]`` — separate K and V planes.
+    - MLA:     ``kv`` shape ``[L, T, D]`` — single fused K/V plane.
+
+    The correct format is determined automatically from the server's
+    registered layout (``ctx.use_mla``).
+
     Args:
         ctx: The LMCacheKVCacheContext instance to use for storage.
-        kv: The KV cache tensor to store, of shape [2, L, T, D].
+        kv: The KV cache tensor.
+            Non-MLA shape: ``[2, num_layers, num_tokens, hidden_dim]``.
+            MLA shape:     ``[num_layers, num_tokens, hidden_dim]``.
         tokens: The list of token IDs corresponding to the KV cache tensor.
         cache_salt: Optional cache salt string for the store.
 
     Returns:
         True if the store operation is successful, False otherwise.
     """
-    if len(tokens) != kv.shape[2]:
+    # Determine token dimension based on MLA vs non-MLA layout.
+    # MLA kv is 3-D [L, T, D]; non-MLA is 4-D [2, L, T, D].
+    use_mla = ctx.use_mla
+    token_dim = 1 if use_mla else 2
+
+    if len(tokens) != kv.shape[token_dim]:
         raise KVCacheSDKError(
             f"Number of tokens ({len(tokens)}) does not match KV tensor's "
-            f"token dimension ({kv.shape[2]})."
+            f"token dimension (dim {token_dim}, size {kv.shape[token_dim]})."
         )
+
     token_ids = list(tokens)
     total_tokens = (len(token_ids) // ctx.chunk_size) * ctx.chunk_size
     token_ids = token_ids[:total_tokens]
-    kv_cpu = kv[:, :, :total_tokens, :].detach().cpu().contiguous()
+
+    if use_mla:
+        # kv: [L, T, D] → slice tokens → unsqueeze to [1, L, T, D] so that
+        # ContiguousTransferWrapper's kv[:, :, slice, :] produces [1, L, C, D].
+        # Each SHM slot / pickle chunk shape from the server is [L, C, D] (3-D),
+        # so we squeeze dim-0 out in a patched copy step below.
+        kv_cpu = kv[:, :total_tokens, :].detach().cpu().contiguous()
+    else:
+        kv_cpu = kv[:, :, :total_tokens, :].detach().cpu().contiguous()
 
     # Phase 0: assign request ID to this request
     request_id = f"store-{uuid.uuid4().hex}"
@@ -570,8 +611,75 @@ def store(
         worker_id=0,
     )
 
-    # Phase 1: store the KV cache tensor
+    # Phase 1: store the KV cache tensor.
+    # For MLA the ContiguousTransferWrapper expects [2, L, T, D] but the
+    # server allocates [L, C, D] slots.  We bypass the wrapper and drive
+    # the underlying EngineDrivenContext directly so we can feed correctly
+    # shaped chunks.
     try:
+        if use_mla:
+            return _store_mla(ctx, key, kv_cpu)
         return ctx.transfer_ctx.store(key, ctx.instance_id, kv_cpu)
     finally:
         ctx.end_session(request_id)
+
+
+def _store_mla(
+    ctx: "LMCacheKVCacheContext",
+    key: "IPCCacheServerKey",
+    kv_cpu: torch.Tensor,
+) -> bool:
+    """Store an MLA kv tensor ``[L, T, D]`` by driving EngineDrivenContext directly.
+
+    ``ContiguousTransferWrapper`` hard-codes ``kv[:, :, slice, :]`` which
+    produces a 4-D chunk, but MLA server slots are 3-D ``[L, chunk_size, D]``.
+    This helper reaches the low-level ``EngineDrivenContext`` (SHM or pickle)
+    stored inside whichever high-level ``TransferContext`` is active and drives
+    it with correctly-shaped 3-D chunks.
+
+    Stack layout:
+        ctx.transfer_ctx              → ContiguousTransferWrapper
+        ctx.transfer_ctx._context     → high-level TransferContext
+                                         (Async/EngineDrivenTransferContext)
+        ...._engine_driven_context    → low-level EngineDrivenContextShm/Pickle
+
+    Args:
+        ctx: The initialized SDK context.
+        key: The IPC cache server key for this store request.
+        kv_cpu: CPU tensor of shape ``[num_layers, total_tokens, hidden_dim]``.
+
+    Returns:
+        True if the store succeeded, False otherwise.
+    """
+    chunk_size = ctx.chunk_size
+
+    # Dig to the low-level EngineDrivenContext (SHM or pickle).
+    # ContiguousTransferWrapper already holds a reference to the low-level
+    # EngineDrivenContext (ShM or pickle) via its _context attribute —
+    # register_kv_caches() passes transfer_ctx.engine_driven_context directly.
+    low_level_ctx = ctx.transfer_ctx._context  # EngineDrivenContextShm / Pickle
+
+    result = low_level_ctx.prepare_store(key, ctx.instance_id)
+
+    if result is None:
+        # Pickle path: build chunks ourselves and commit.
+        num_chunks = kv_cpu.shape[1] // chunk_size
+        chunks = [
+            kv_cpu[:, i * chunk_size : (i + 1) * chunk_size, :].contiguous()
+            for i in range(num_chunks)
+        ]
+    else:
+        # SHM path: result = (slot_tensors, chunk_indices)
+        slot_tensors, chunk_indices = result
+        if len(chunk_indices) == 0:
+            # All chunks already cached — nothing to write, nothing to commit.
+            # Calling commit_store here would return False (no pending write
+            # reservation), so we short-circuit and report success.
+            return True
+        for slot, chunk_idx in zip(slot_tensors, chunk_indices, strict=True):
+            start = chunk_idx * chunk_size
+            src = kv_cpu[:, start : start + chunk_size, :].contiguous()
+            slot.copy_(src)
+        chunks = []  # SHM path sends empty payload in commit
+
+    return low_level_ctx.commit_store(key, ctx.instance_id, chunks)
