@@ -1,0 +1,22 @@
+services:
+  sgl-serve:
+    image: lmsysorg/sglang:v0.5.16-cu130
+    container_name: sgl-serve
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - 18001:30000
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    command: > 
+      sglang serve
+      --model-path Qwen/Qwen3-0.6B
+      --enable-hierarchical-cache
+      --hicache-ratio 1
+      --kv-cache-dtype fp8_e4m3    
+      --mem-fraction-static 0.4
+      --context-length 2048
+      --max-total-tokens 4096
+      --max-running-requests 1
+      --host 0.0.0.0 --port 30000
