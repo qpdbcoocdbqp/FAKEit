@@ -31,11 +31,12 @@ import time
 import urllib.request
 import urllib.error
 
-API_HOST = "127.0.0.1"
-API_PORT = 9970          # internal_api_server port for this test run
-STARTUP_TIMEOUT_S = 30
-POLL_INTERVAL_S = 1
 
+API_HOST = "localhost"
+API_PORT = 9971
+STARTUP_TIMEOUT_S = 15
+POLL_INTERVAL_S = 1
+CONFIG_PATH = "configs/cpu-offload.yaml"
 
 def check_import() -> bool:
     print("== 1. import check ==")
@@ -81,7 +82,7 @@ def wait_for_health(base_url: str, timeout_s: int) -> bool:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(f"{base_url}/healthcheck", timeout=2) as r:
+            with urllib.request.urlopen(f"{base_url}/conf", timeout=2) as r:
                 if r.status == 200:
                     return True
         except (urllib.error.URLError, ConnectionError, TimeoutError):
@@ -96,14 +97,12 @@ def check_standalone_engine() -> bool:
     kv_shape = "4,2,256,8,64"
     cmd = [
         sys.executable, "-m", "lmcache.v1.standalone",
-        f"--kv_shape={kv_shape}",
-        "--kv_dtype=float16",
+        f"--kv-shape={kv_shape}",
+        "--kv-dtype=float16",
         "--fmt=vllm",
-        "--model_name=lmcache_dev_smoke_test",
+        "--model-name=lmcache_dev_smoke_test",
         "--device=cpu",
-        "--internal_api_server_enabled=True",
-        f"--internal_api_server_host={API_HOST}",
-        f"--internal_api_server_port={API_PORT}",
+        f"--config={CONFIG_PATH}",
     ]
     print("launching:", " ".join(cmd))
 
@@ -122,10 +121,10 @@ def check_standalone_engine() -> bool:
         print(f"[OK] engine healthy at {base_url}")
 
         try:
-            with urllib.request.urlopen(f"{base_url}/status", timeout=3) as r:
-                print(f"[OK] /status -> HTTP {r.status}")
+            with urllib.request.urlopen(f"{base_url}/meta", timeout=3) as r:
+                print(f"[OK] /meta -> HTTP {r.status}")
         except urllib.error.URLError as e:
-            print(f"[WARN] /status check failed (non-fatal): {e}")
+            print(f"[WARN] /meta check failed (non-fatal): {e}")
 
         return True
     finally:
