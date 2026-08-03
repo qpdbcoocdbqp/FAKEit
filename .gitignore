@@ -12,6 +12,8 @@
 *.backup
 *.db
 *.whl
+*.mp3
+*.flac
 sglang-dashboard.json
 qwen3-0.6b-eagle3.json
 
@@ -27,3 +29,4 @@ dev.py
 dev-*
 models--*
 issue-*
+ffmpeg/
