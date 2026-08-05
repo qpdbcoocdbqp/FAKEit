@@ -7,16 +7,12 @@ Install deps first:
         "transformers>=4.57.0,<5" "soundfile>=0.12" "safetensors>=0.4"
 
 Notes:
-- Model card lists two different repo ids ("Audio8/..." for the HF page,
-  "AutoArk-AI/Audio8-TTS-Preview-0.6b" in the code sample). Try MODEL_ID
-  below first; if it 404s, swap in the AutoArk-AI one.
 - Needs a CUDA GPU for reasonable speed (bf16). Falls back to CPU float32
   automatically but will be slow.
 - trust_remote_code=True is required (custom architecture) -- only run
   this against a model repo you trust.
 """
 
-import sys
 import time
 
 import soundfile as sf
@@ -24,11 +20,15 @@ import torch
 from transformers import AutoModel, AutoProcessor
 
 MODEL_ID = "Audio8/Audio8-TTS-Preview-0.6b"
-# Fallback if the above id isn't resolvable:
-# MODEL_ID = "AutoArk-AI/Audio8-TTS-Preview-0.6b"
 
-TEXT = "Hello, this is a test of the Audio8 text to speech model."
+TEXT = "今天想和你分享一个好消息，Audio8 现在可以用更高效的方式生成自然流畅的语音。"
 OUTPUT_PATH = "output.wav"
+
+# Reference voice for zero-shot voice cloning.
+REFERENCE_AUDIO = "docs/tts/reference_5s.wav"
+# Must be the exact words spoken in REFERENCE_AUDIO.
+REFERENCE_TEXT = "突然转错帐可能是某个系统整个当掉结果回头一查才发现写着乱扣友是"
+# "AI而唯一该把关的人从头到尾没看过他那这个锅到底该谁扛"
 
 
 def main():
@@ -36,24 +36,30 @@ def main():
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     print(f"[info] device={device} dtype={dtype}")
 
+    # Keep debugging runs reproducible.
+    torch.manual_seed(1234)
+    if device == "cuda":
+        torch.cuda.manual_seed_all(1234)
+
     print(f"[info] loading processor/model: {MODEL_ID}")
     t0 = time.time()
-    try:
-        processor = AutoProcessor.from_pretrained(MODEL_ID, trust_remote_code=True)
-        model = (
-            AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True, dtype=dtype)
-            .eval()
-            .to(device)
-        )
-    except Exception as e:
-        print(f"[error] failed to load model '{MODEL_ID}': {e}")
-        print("[hint] try MODEL_ID = 'AutoArk-AI/Audio8-TTS-Preview-0.6b' instead")
-        sys.exit(1)
+
+    processor = AutoProcessor.from_pretrained(MODEL_ID, trust_remote_code=True)
+    model = (
+        AutoModel.from_pretrained(MODEL_ID, trust_remote_code=True, dtype=dtype)
+        .eval()
+        .to(device)
+    )
     print(f"[info] loaded in {time.time() - t0:.1f}s")
 
-    # --- Generation without a reference voice (simplest smoke test) ---
-    print("[info] running generation without reference audio...")
-    inputs = processor(text=[TEXT], return_tensors="pt")
+    # --- Generation with a reference voice ---
+    print(f"[info] running generation with reference audio: {REFERENCE_AUDIO}")
+    inputs = processor(
+        text=[TEXT],
+        reference_audio=[REFERENCE_AUDIO],
+        reference_text=[REFERENCE_TEXT],
+        return_tensors="pt",
+    )
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
     t0 = time.time()
@@ -67,7 +73,9 @@ def main():
             do_sample=True,
             return_dict_in_generate=True,
         )
+        print(f"[debug] codes shape={tuple(output.codes.shape)}")
         waveforms, waveform_lengths = model.decode_audio(output.codes)
+    print(f"[debug] waveform lengths={waveform_lengths.tolist()}")
     print(f"[info] generated in {time.time() - t0:.1f}s")
 
     audio = waveforms[0, : int(waveform_lengths[0])].float().cpu().numpy()
