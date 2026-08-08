@@ -29,6 +29,11 @@ def _session(path: Path, threads: int | None = None) -> ort.InferenceSession:
     return ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
 
 
+# Separate hook for the codec decoder so GPU runners can override it independently
+# (e.g. when cuDNN is unavailable the decoder falls back to CPU while AR stays on CUDA).
+_decoder_session = _session
+
+
 def _sample(logits: np.ndarray, temperature: float, top_p: float, top_k: int, rng) -> int:
     values = np.asarray(logits, dtype=np.float64).reshape(-1)
     order = np.argsort(values)[::-1]
@@ -77,7 +82,7 @@ class ArkTtsRuntime:
             threads,
         )
         codec_models = self.manifest.get("codec_models", {"fp16": "codec_decoder_fp16.onnx"})
-        self.decoder = _session(
+        self.decoder = _decoder_session(
             self.model_dir / codec_models[self.codec_precision],
             threads,
         )

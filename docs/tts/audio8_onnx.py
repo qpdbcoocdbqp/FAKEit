@@ -107,24 +107,15 @@ def synthesize_to_wav(
     return output_path
 
 
-regist_model = Path("~/.cache/huggingface/hub/models--Audio8--Audio8-TTS-Preview-0.6B-ONNX-INT4/snapshots/818569c6b832118ad68d61bbd873abe250fcd68a/registration").expanduser()
-reference_audio = Path("docs/tts/reference.wav").expanduser()
-
 model = Path("~/.cache/huggingface/hub/models--Audio8--Audio8-TTS-Preview-0.6B-ONNX-INT4/snapshots/818569c6b832118ad68d61bbd873abe250fcd68a").expanduser()
+regist_model = model / "registration"
+reference_audio = Path("docs/tts/reference.wav").expanduser()
+reference_text="突然转错帐可能是某个系统整个当掉结果回头一查才发现写這段code的是AI而唯一该把关的人从头到尾没看过他那这个锅到底该谁扛",
 
 voices = Path("./voices")
 voice = "user_0"
 text = "今天想和你分享一个好消息，Audio8 现在可以用更高效的方式生成自然流畅的语音。"
 output = "output.wav"
-precision = None
-codec_precision = None
-threads = None
-max_new_tokens = 1024
-temperature = 0.7
-top_p = 0.9
-top_k = 50
-seed = 42
-sample_rate = 24000
 
 # Register a new voice using the reference audio and text
 meta = register_voice(
@@ -132,7 +123,7 @@ meta = register_voice(
     voices_dir=voices,
     name=voice,
     audio_path=reference_audio,
-    text="突然转错帐可能是某个系统整个当掉结果回头一查才发现写這段code的是AI而唯一该把关的人从头到尾没看过他那这个锅到底该谁扛",
+    text=reference_text,
     overwrite=True,
     )
 
@@ -143,9 +134,9 @@ print(json.dumps(meta, ensure_ascii=False, indent=2))
 runtime = load_runtime(
     model_dir=model,
     voices_dir=voices,
-    precision=precision,
-    codec_precision=codec_precision,
-    threads=threads,
+    precision="int4",
+    codec_precision="fp16",
+    threads=2,
 )
 
 # Generate audio from the text using the registered voice and save it to a wav file
@@ -154,12 +145,12 @@ output_path = synthesize_to_wav(
     text=text,
     voice="speaker_a",
     output_path=output,
-    max_new_tokens=max_new_tokens,
-    temperature=temperature,
-    top_p=top_p,
-    top_k=top_k,
-    seed=seed,
-    sample_rate=sample_rate,
+    max_new_tokens=1024,
+    temperature=0.7,
+    top_p=0.9,
+    top_k=50,
+    seed=42,
+    sample_rate=44100,
 )
 
 print(f"Generated audio file: {output_path}")
