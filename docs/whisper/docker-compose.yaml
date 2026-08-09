@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   whisper:
     image: vllm/vllm-openai:v0.23.0-ubuntu2404
@@ -18,7 +17,7 @@ services:
         vllm serve openai/whisper-large-v3-turbo \
         --host 0.0.0.0 \
         --port 8000 \
-        --gpu-memory-utilization 0.75 \
+        --gpu-memory-utilization 0.3 \
         --max-model-len 448
     deploy:
       resources:

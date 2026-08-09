@@ -13,7 +13,9 @@
 *.db
 *.whl
 *.mp3
+*.mp4
 *.flac
+*.npy
 sglang-dashboard.json
 qwen3-0.6b-eagle3.json
 
@@ -22,6 +24,7 @@ cache/
 volume/
 dev/
 tmp/
+voices/
 
 # custom
 dev.md
