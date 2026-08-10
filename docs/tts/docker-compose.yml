@@ -1,0 +1,15 @@
+services:
+  audio8:
+    build: .
+    ports:
+      - "8024:8024"
+    environment:
+      # The mounted directory may be the HF hub root or a direct model snapshot.
+      ROOT_MODEL_DIR: /models
+      VOICE_DIR: /voices
+      MODEL_DIR: ${MODEL_DIR:-}
+    gpus: all
+    volumes:
+      - ${HF_CACHE_DIR:-~/.cache/huggingface/hub}:/models:ro
+      - ${VOICE_HOST_DIR:-./voices}:/voices
+    restart: unless-stopped

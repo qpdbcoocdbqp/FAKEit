@@ -226,6 +226,3 @@ synthesize(
     top_k=50,
     seed=random.randint(0, 1000),
 )
-
-
-
