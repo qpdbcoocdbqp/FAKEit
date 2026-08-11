@@ -1,0 +1,4 @@
+numpy>=1.26
+soundfile>=0.12
+speechbrain>=1.0
+torchaudio>=2.5

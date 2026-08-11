@@ -2,6 +2,7 @@
 .agent.md
 .vscode
 .env
+.cache
 *.pyc
 *.jsonl
 *.wav
