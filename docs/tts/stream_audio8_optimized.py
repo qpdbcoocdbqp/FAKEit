@@ -22,6 +22,7 @@ Voice registration flow:
 
 import json
 import time
+import types
 from pathlib import Path
 import random
 import numpy as np
@@ -204,6 +205,97 @@ def _crossfade_pair(prev: np.ndarray, nxt: np.ndarray, n: int) -> np.ndarray:
         return np.empty(0, dtype=np.float32)
     x = np.linspace(0.0, 1.0, n, dtype=np.float32)
     return prev[-n:] * (1.0 - x) + nxt[:n] * x
+
+
+def _optimized_processed_scores(
+    self,
+    input_ids: torch.Tensor,
+    scores: torch.Tensor,
+    processors,
+    top_k: int,
+    top_p: float,
+    temperature: float,
+) -> torch.Tensor:
+    """Equivalent logits filtering with top-k partial selection.
+
+    The remote model sorts the complete 4096-entry vocabulary for every
+    generated codebook.  Since entries after top_k are discarded anyway,
+    selecting top_k first avoids that full sort while preserving the same
+    top-p filtering order over the retained candidates.
+    """
+    scores = processors(input_ids, scores)
+    vocab_size = scores.shape[-1]
+    k = min(max(int(top_k), 1), vocab_size)
+    top_scores, top_indices = torch.topk(scores, k=k, dim=-1, largest=True, sorted=True)
+    cumulative = torch.cumsum(torch.softmax(top_scores, dim=-1), dim=-1)
+    positions = torch.arange(k, device=scores.device)
+    threshold = torch.tensor(top_p, dtype=cumulative.dtype, device=scores.device)
+    remove = cumulative > threshold
+    remove[..., 0] = False
+    remove |= positions >= k
+
+    kept_scores = top_scores.masked_fill(remove, float("-inf"))
+    filtered = torch.full_like(scores, float("-inf"))
+    filtered.scatter_(dim=-1, index=top_indices, src=kept_scores)
+    temperature_value = torch.tensor(
+        temperature, dtype=scores.dtype, device=scores.device
+    ).clamp_min(1e-5)
+    return filtered / temperature_value
+
+
+def _optimized_generate_codebooks(
+    self,
+    slow_hidden: torch.Tensor,
+    semantic: torch.Tensor,
+    processors,
+    top_k: int,
+    top_p: float,
+    temperature: float,
+    do_sample: bool,
+    generator=None,
+) -> torch.Tensor:
+    """Workspace override for Audio8's remote _generate_codebooks()."""
+    hidden = self.fast_project_in(slow_hidden)
+
+    # Position 0 populates the fast KV cache; its logits are intentionally
+    # unused by the original model and must still be computed.
+    self._fast_step(hidden, 0)
+
+    current = (semantic - self.config.semantic_begin_id).clamp(
+        0, self.config.codebook_size - 1
+    )
+    codebooks = [current]
+    fast_history = torch.empty(
+        (current.shape[0], self.config.num_codebooks),
+        dtype=current.dtype,
+        device=current.device,
+    )
+    fast_history[:, 0] = current
+    hidden = self.fast_embeddings(current)[:, None]
+
+    for position in range(1, self.config.num_codebooks):
+        scores = self._fast_step(hidden, position)
+        scores = _optimized_processed_scores(
+            self, fast_history[:, :position], scores, processors,
+            top_k, top_p, temperature,
+        )
+        current = (
+            self._sample(scores, generator=generator)
+            if do_sample
+            else scores.argmax(dim=-1)
+        )
+        codebooks.append(current)
+        fast_history[:, position] = current
+        hidden = self.fast_embeddings(current)[:, None]
+
+    return torch.stack(codebooks, dim=1)
+
+
+def _install_optimized_codebook_generation(model) -> None:
+    model._generate_codebooks = types.MethodType(
+        _optimized_generate_codebooks, model
+    )
+    print("[info] installed optimized _generate_codebooks(topk)")
 
 
 class _PlaybackBuffer:
@@ -535,7 +627,6 @@ def _generate_streaming(
 ) -> None:
     """Run Audio8 token generation and feed each frame to *streamer*."""
     from torch import Tensor
-    from torch.nn.attention import SDPBackend, sdpa_kernel
     from transformers.generation import StoppingCriteriaList
     prompt, prompt_mask = model._prepare_prompt(**inputs)
     batch_size, _, prompt_width = prompt.shape
@@ -552,26 +643,89 @@ def _generate_streaming(
     criteria = StoppingCriteriaList()
     cache_position = torch.arange(prompt_width, device=model.device, dtype=torch.long)
     position_ids = prompt_mask.cumsum(-1).sub(1).clamp_min(0)
+
+    # Measure model generation separately from streamer.end(), which may
+    # wait for codec decoding and audio playback to drain.
+    timing_on_cuda = model.device.type == "cuda"
+    if timing_on_cuda:
+        generation_start_event = torch.cuda.Event(enable_timing=True)
+        generation_end_event = torch.cuda.Event(enable_timing=True)
+        generation_start_event.record()
+        slow_step_seconds = 0.0
+        codebook_seconds = 0.0
+        slow_step_events = []
+        codebook_events = []
+    else:
+        generation_start_time = time.perf_counter()
+        slow_step_seconds = 0.0
+        codebook_seconds = 0.0
+
+    if timing_on_cuda:
+        component_start = torch.cuda.Event(enable_timing=True)
+        component_end = torch.cuda.Event(enable_timing=True)
+        component_start.record()
+    else:
+        slow_start_time = time.perf_counter()
     logits, slow_hidden = model._slow_step(prompt, cache_position, position_ids, prompt_mask)
-    semantic_history = prompt[:, 0]
+    if timing_on_cuda:
+        component_end.record()
+        slow_step_events.append((component_start, component_end))
+    else:
+        slow_step_seconds += time.perf_counter() - slow_start_time
+    # Keep the history in fixed-size buffers.  Appending with torch.cat() on
+    # every AR step reallocates and copies the complete history, turning a
+    # long generation into an avoidable O(n^2) copy workload.
+    history_capacity = prompt_width + max_new_tokens
+    semantic_history_buffer = torch.empty(
+        (batch_size, history_capacity), dtype=prompt.dtype, device=model.device
+    )
+    semantic_history_buffer[:, :prompt_width].copy_(prompt[:, 0])
+    history_length = prompt_width
+
+    prompt_mask_buffer = torch.empty(
+        (batch_size, history_capacity), dtype=prompt_mask.dtype, device=model.device
+    )
+    prompt_mask_buffer[:, :prompt_width].copy_(prompt_mask)
     prompt_lengths = prompt_mask.sum(-1)
     previous = None
     finished = torch.zeros(batch_size, dtype=torch.bool, device=model.device)
+    pending_codebooks = None
+    pending_emitted = None
     try:
         for step in range(max_new_tokens):
             active_before = ~finished
+            semantic_history = semantic_history_buffer[:, :history_length]
             semantic = model._sample_semantic(
                 semantic_history, logits, semantic_processors, top_k, top_p,
                 temperature, previous, do_sample, generator,
             )
+            if timing_on_cuda:
+                component_start = torch.cuda.Event(enable_timing=True)
+                component_end = torch.cuda.Event(enable_timing=True)
+                component_start.record()
+            else:
+                codebook_start_time = time.perf_counter()
             codebooks = model._generate_codebooks(
                 slow_hidden, semantic, codebook_processors, top_k, top_p,
                 temperature, do_sample, generator,
             )
+            if timing_on_cuda:
+                component_end.record()
+                codebook_events.append((component_start, component_end))
+            else:
+                codebook_seconds += time.perf_counter() - codebook_start_time
             emitted = active_before & (semantic != model.config.eos_token_id)
-            if batch_size == 1 and bool(emitted[0].item()):
-                streamer.put(codebooks[0])
-            semantic_history = torch.cat((semantic_history, semantic[:, None]), dim=1)
+            # Hold one frame back so the normal path does not synchronize on
+            # emitted[0].item() every step.  Reaching the next iteration means
+            # the previous frame was valid; the final pending frame is checked
+            # once in the cleanup path below.
+            if batch_size == 1 and pending_codebooks is not None:
+                streamer.put(pending_codebooks)
+            if batch_size == 1:
+                pending_codebooks = codebooks[0]
+                pending_emitted = emitted[0]
+            semantic_history_buffer[:, history_length] = semantic
+            history_length += 1
 
             if previous is None:
                 previous = torch.zeros(
@@ -584,7 +738,9 @@ def _generate_streaming(
                 previous[:, -1] = semantic
             finished |= semantic.eq(model.config.eos_token_id)
             if criteria:
-                stopped = criteria(semantic_history, logits)
+                stopped = criteria(
+                    semantic_history_buffer[:, :history_length], logits
+                )
                 if not isinstance(stopped, Tensor):
                     stopped = torch.full_like(finished, bool(stopped))
                 finished |= stopped.to(device=model.device, dtype=torch.bool)
@@ -593,14 +749,79 @@ def _generate_streaming(
 
             next_column = torch.cat((semantic[:, None], codebooks), dim=1).unsqueeze(-1)
             new_valid = active_before.long()[:, None]
-            prompt_mask = torch.cat((prompt_mask, new_valid), dim=1)
+            prompt_mask_buffer[:, prompt_width + step] = new_valid[:, 0]
+            prompt_mask = prompt_mask_buffer[:, : prompt_width + step + 1]
             physical_position = torch.tensor([prompt_width + step], device=model.device)
             token_position = (prompt_lengths + step)[:, None]
-            with sdpa_kernel(SDPBackend.MATH):
-                logits, slow_hidden = model._slow_step(
-                    next_column, physical_position, token_position, prompt_mask
-                )
+            # Let PyTorch select the fastest compatible SDPA backend.  The
+            # previous forced MATH backend disabled fused attention kernels
+            # for every incremental slow-model step.
+            if timing_on_cuda:
+                component_start = torch.cuda.Event(enable_timing=True)
+                component_end = torch.cuda.Event(enable_timing=True)
+                component_start.record()
+            else:
+                slow_start_time = time.perf_counter()
+            logits, slow_hidden = model._slow_step(
+                next_column, physical_position, token_position, prompt_mask
+            )
+            if timing_on_cuda:
+                component_end.record()
+                slow_step_events.append((component_start, component_end))
+            else:
+                slow_step_seconds += time.perf_counter() - slow_start_time
     finally:
+        if (
+            batch_size == 1
+            and pending_codebooks is not None
+            and pending_emitted is not None
+            and bool(pending_emitted.item())
+        ):
+            streamer.put(pending_codebooks)
+
+        if timing_on_cuda:
+            generation_end_event.record()
+            generation_end_event.synchronize()
+            generation_seconds = generation_start_event.elapsed_time(
+                generation_end_event
+            ) / 1000.0
+            slow_step_seconds = sum(
+                start.elapsed_time(end) for start, end in slow_step_events
+            ) / 1000.0
+            codebook_seconds = sum(
+                start.elapsed_time(end) for start, end in codebook_events
+            ) / 1000.0
+        else:
+            generation_seconds = time.perf_counter() - generation_start_time
+
+        generated_frames = len(streamer.frames)
+        frame_period = (
+            float(model.config.codec_frame_size)
+            / float(model.config.codec_sample_rate)
+        )
+        generated_audio_seconds = generated_frames * frame_period
+        rtf = (
+            generation_seconds / generated_audio_seconds
+            if generated_audio_seconds > 0
+            else float("inf")
+        )
+        print(
+            f"[stream] generation={generation_seconds:.3f}s  "
+            f"frames={generated_frames}  "
+            f"audio={generated_audio_seconds:.3f}s  "
+            f"frame_period={frame_period * 1000.0:.2f}ms  RTF={rtf:.3f}"
+        )
+        print(
+            f"[stream] component_time slow_step={slow_step_seconds:.3f}s  "
+            f"codebooks={codebook_seconds:.3f}s"
+        )
+        if timing_on_cuda:
+            print(
+                "[stream] CUDA SDPA enabled: "
+                f"flash={torch.backends.cuda.flash_sdp_enabled()}  "
+                f"mem_efficient={torch.backends.cuda.mem_efficient_sdp_enabled()}  "
+                f"math={torch.backends.cuda.math_sdp_enabled()}"
+            )
         streamer.end()
 
 
@@ -720,6 +941,7 @@ model = (
     .to(device)
 )
 print(f"[info] loaded model")
+_install_optimized_codebook_generation(model)
 
 # Step 1 — register the reference voice (only runs encoding when needed)
 register_voice(
