@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Test script for Audio8/Audio8-TTS-Preview-0.6b
 https://huggingface.co/Audio8/Audio8-TTS-Preview-0.6b
@@ -21,6 +22,7 @@ Voice registration flow:
 """
 
 import json
+import os
 import time
 import types
 from pathlib import Path
@@ -29,6 +31,77 @@ import numpy as np
 import soundfile as sf
 import torch
 from transformers import AutoModel, AutoProcessor
+
+
+_FAST_PROFILE = None
+_FAST_PROFILE_ENABLED = os.environ.get("AUDIO8_FAST_PROFILE", "0") == "1"
+
+
+def _reset_fast_profile(device) -> None:
+    global _FAST_PROFILE
+    if not _FAST_PROFILE_ENABLED:
+        _FAST_PROFILE = None
+        return
+    _FAST_PROFILE = {
+        "cuda": device.type == "cuda",
+        "fast_step": [[] for _ in range(10)],
+        "filter": [[] for _ in range(9)],
+        "sample": [[] for _ in range(9)],
+    }
+
+
+def _profile_start():
+    if _FAST_PROFILE is not None and _FAST_PROFILE["cuda"]:
+        event = torch.cuda.Event(enable_timing=True)
+        event.record()
+        return event
+    return time.perf_counter()
+
+
+def _profile_end(bucket, position, start):
+    if _FAST_PROFILE is None:
+        return
+    if _FAST_PROFILE["cuda"]:
+        end = torch.cuda.Event(enable_timing=True)
+        end.record()
+        _FAST_PROFILE[bucket][position].append((start, end))
+    else:
+        _FAST_PROFILE[bucket][position].append(
+            time.perf_counter() - start
+        )
+
+
+def _report_fast_profile() -> None:
+    if _FAST_PROFILE is None:
+        return
+
+    def elapsed(item):
+        if _FAST_PROFILE["cuda"]:
+            start, end = item
+            return start.elapsed_time(end) / 1000.0
+        return item
+
+    def report(bucket, label):
+        totals = [sum(elapsed(item) for item in values)
+                  for values in _FAST_PROFILE[bucket]]
+        total = sum(totals)
+        calls = sum(len(values) for values in _FAST_PROFILE[bucket])
+        if not calls:
+            return
+        average = total / calls
+        detail = ", ".join(
+            f"p{index}={value / max(1, len(_FAST_PROFILE[bucket][index])) * 1000.0:.2f}ms"
+            for index, value in enumerate(totals)
+            if _FAST_PROFILE[bucket][index]
+        )
+        print(
+            f"[fast-profile] {label} total={total:.3f}s "
+            f"calls={calls} avg={average * 1000.0:.2f}ms  {detail}"
+        )
+
+    report("fast_step", "fast_step")
+    report("filter", "topk_topp")
+    report("sample", "sample_embed")
 
 MODEL_ID = "Audio8/Audio8-TTS-Preview-0.6b"
 
@@ -259,7 +332,9 @@ def _optimized_generate_codebooks(
 
     # Position 0 populates the fast KV cache; its logits are intentionally
     # unused by the original model and must still be computed.
+    fast_start = _profile_start()
     self._fast_step(hidden, 0)
+    _profile_end("fast_step", 0, fast_start)
 
     current = (semantic - self.config.semantic_begin_id).clamp(
         0, self.config.codebook_size - 1
@@ -274,11 +349,18 @@ def _optimized_generate_codebooks(
     hidden = self.fast_embeddings(current)[:, None]
 
     for position in range(1, self.config.num_codebooks):
+        fast_start = _profile_start()
         scores = self._fast_step(hidden, position)
+        _profile_end("fast_step", position, fast_start)
+
+        filter_start = _profile_start()
         scores = _optimized_processed_scores(
             self, fast_history[:, :position], scores, processors,
             top_k, top_p, temperature,
         )
+        _profile_end("filter", position - 1, filter_start)
+
+        sample_start = _profile_start()
         current = (
             self._sample(scores, generator=generator)
             if do_sample
@@ -287,6 +369,7 @@ def _optimized_generate_codebooks(
         codebooks.append(current)
         fast_history[:, position] = current
         hidden = self.fast_embeddings(current)[:, None]
+        _profile_end("sample", position - 1, sample_start)
 
     return torch.stack(codebooks, dim=1)
 
@@ -296,6 +379,60 @@ def _install_optimized_codebook_generation(model) -> None:
         _optimized_generate_codebooks, model
     )
     print("[info] installed optimized _generate_codebooks(topk)")
+
+
+def _enable_fast_sdpa(model) -> None:
+    """Enable fused SDPA in Audio8's fast codebook transformer layers."""
+    fast_layers = getattr(model, "fast_layers", None)
+    if fast_layers is None:
+        print("[info] fast SDPA unavailable: model has no fast_layers")
+        return
+    enabled = 0
+    for layer in fast_layers:
+        attention = getattr(layer, "attention", None)
+        if attention is not None and hasattr(attention, "use_sdpa"):
+            attention.use_sdpa = True
+            enabled += 1
+    print(f"[info] enabled fast-layer SDPA ({enabled} layers)")
+
+
+def _compile_fast_step(model) -> None:
+    """Compile the small, repeatedly-called fast Transformer step."""
+    compiler = getattr(torch, "compile", None)
+    if compiler is None:
+        print("[info] torch.compile unavailable; using eager fast_step")
+        return
+    try:
+        original_fast_step = model._fast_step
+        compiled_fast_step = compiler(
+            model._fast_step,
+            mode="reduce-overhead",
+            fullgraph=False,
+            dynamic=False,
+        )
+
+        compile_state = {"active": True}
+
+        def safe_fast_step(*args, **kwargs):
+            if compile_state["active"]:
+                try:
+                    return compiled_fast_step(*args, **kwargs)
+                except Exception as exc:
+                    # Inductor/Triton failures often occur only at the first
+                    # invocation, not while torch.compile() is created.
+                    compile_state["active"] = False
+                    model._fast_step = original_fast_step
+                    print(
+                        f"[info] fast_step compile runtime failure; "
+                        f"using eager ({exc})"
+                    )
+                    return original_fast_step(*args, **kwargs)
+            return original_fast_step(*args, **kwargs)
+
+        model._fast_step = safe_fast_step
+        print("[info] enabled torch.compile for fast_step")
+    except Exception as exc:
+        print(f"[info] fast_step compile unavailable; using eager ({exc})")
 
 
 class _PlaybackBuffer:
@@ -628,6 +765,7 @@ def _generate_streaming(
     """Run Audio8 token generation and feed each frame to *streamer*."""
     from torch import Tensor
     from transformers.generation import StoppingCriteriaList
+    _reset_fast_profile(model.device)
     prompt, prompt_mask = model._prepare_prompt(**inputs)
     batch_size, _, prompt_width = prompt.shape
     if prompt_width >= model.config.max_seq_len:
@@ -815,6 +953,7 @@ def _generate_streaming(
             f"[stream] component_time slow_step={slow_step_seconds:.3f}s  "
             f"codebooks={codebook_seconds:.3f}s"
         )
+        _report_fast_profile()
         if timing_on_cuda:
             print(
                 "[stream] CUDA SDPA enabled: "
@@ -942,6 +1081,11 @@ model = (
 )
 print(f"[info] loaded model")
 _install_optimized_codebook_generation(model)
+# Fast-layer SDPA was benchmarked but regressed this workload substantially
+# (short masked sequences selected a slower path on this GPU). Keep the
+# top-k/codebook optimizations enabled while using the model's original eager
+# fast attention implementation.
+_compile_fast_step(model)
 
 # Step 1 — register the reference voice (only runs encoding when needed)
 register_voice(
@@ -976,6 +1120,6 @@ stream_synthesize(
     prefetch_seconds=0.8,
     max_buffer_seconds=4.0,
     max_decode_queue=2,
-    play=True,
+    play=False,
     save_to=OUTPUT_PATH,
 )
