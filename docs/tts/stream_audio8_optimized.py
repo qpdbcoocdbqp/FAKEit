@@ -17,7 +17,7 @@ Voice registration flow:
   1. register_voice() encodes a reference WAV into codec codes via
      model.encode_audio() and saves them to <voices_dir>/<name>/codes.npy
      alongside a meta.json.  Only needed once per speaker.
-  2. synthesize() loads the saved codes and passes them to the processor as
+  2. stream_synthesize() loads the saved codes and passes them to the processor as
      reference_codes, bypassing the encoder entirely on subsequent runs.
 """
 
@@ -25,12 +25,32 @@ import json
 import os
 import time
 import types
+import threading
 from pathlib import Path
 import random
 import numpy as np
 import soundfile as sf
 import torch
 from transformers import AutoModel, AutoProcessor
+
+
+def _suppress_alsa_errors() -> None:
+    """Redirect noisy C-level ALSA underrun prints from stderr in WSL2/Linux."""
+    try:
+        import ctypes
+        asound = ctypes.cdll.LoadLibrary("libasound.so.2")
+        c_handler_type = ctypes.CFUNCTYPE(
+            None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p
+        )
+        def _dummy_handler(file, line, function, err, fmt):
+            pass
+        _suppress_alsa_errors._c_handler = c_handler_type(_dummy_handler)
+        asound.snd_lib_error_set_handler(_suppress_alsa_errors._c_handler)
+    except Exception:
+        pass
+
+
+_suppress_alsa_errors()
 
 
 _FAST_PROFILE = None
@@ -105,7 +125,9 @@ def _report_fast_profile() -> None:
 
 MODEL_ID = "Audio8/Audio8-TTS-Preview-0.6b"
 
-TEXT = "最高の音質体験をしていただくために、本物をサポートしてください。良いアニメーション、良い音楽、忘れられない思い出。忘れられないことを願っています。"
+# TEXT = "最高の音質体験をしていただくために、本物をサポートしてください。良いアニメーション、良い音楽、忘れられない思い出。忘れられないことを願っています。"
+TEXT = "We may use artificial intelligence (AI) tools to support parts of the hiring process, such as reviewing applications, analyzing resumes, or assessing responses and identifying potential inconsistencies or verification signals in application materials based on available information. These tools assist our recruitment team but do not replace human judgment. Final hiring decisions are ultimately made by humans. If you would like more information about how your data is processed, please contact us."
+
 OUTPUT_PATH = "output.wav"
 
 # Reference voice for zero-shot voice cloning.
@@ -118,6 +140,19 @@ REFERENCE_TEXT = "突然轉錯帳可能是某個系統整個當掉結果回頭�
 VOICES_DIR = Path("./docs/tts/voices")
 # Name used to save / load this speaker.
 VOICE_NAME = "user_0"
+
+# Persistent on-disk directory for Inductor's own compile cache (FX graph /
+# Triton / autotuning). Overrides the default /tmp/torchinductor_<user>,
+# which on WSL2 often lives on tmpfs and gets wiped on reboot -- pointing
+# it here means a same-shape rerun on this machine can skip re-compiling
+# even without the explicit save/load step below.
+os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", str(Path("./docs/tts/inductor_cache").resolve()))
+
+# Portable snapshot of torch.compile's caches (Dynamo guards + AOTAutograd +
+# Inductor + Triton + autotuning artifacts), saved/loaded explicitly via
+# torch.compiler.{save,load}_cache_artifacts(). This is what actually lets a
+# brand-new process skip the cold-compile cost paid during warmup_model().
+COMPILE_CACHE_PATH = Path("./docs/tts/compile_cache/audio8_compile_cache.bin")
 
 
 # ---------------------------------------------------------------------------
@@ -183,78 +218,6 @@ def register_voice(
 
     print(f"[register] saved {codes_np.shape[1]} frames → {voice_dir}  ({time.time() - t0:.1f}s)")
     return voice_dir
-
-
-# ---------------------------------------------------------------------------
-# Synthesis using a registered voice
-# ---------------------------------------------------------------------------
-
-def synthesize(
-    model: "AutoModel",
-    processor: "AutoProcessor",
-    text: str,
-    voice_name: str,
-    voices_dir: Path,
-    output_path: str | Path,
-    max_new_tokens: int = 1024,
-    temperature: float = 0.8,
-    top_p: float = 0.95,
-    top_k: int = 50,
-    seed: int = 1234,
-) -> Path:
-    """Generate speech from *text* using the registered voice codes."""
-    voice_dir = voices_dir / voice_name
-    codes_path = voice_dir / "codes.npy"
-    meta_path = voice_dir / "meta.json"
-
-    if not codes_path.is_file() or not meta_path.is_file():
-        raise FileNotFoundError(
-            f"Voice '{voice_name}' not found in {voices_dir}. "
-            "Call register_voice() first."
-        )
-
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    reference_text = meta["reference_text"]
-
-    print(f"[synth] voice='{voice_name}'  text='{text}'")
-    t0 = time.time()
-
-    inputs = processor(
-        text=[text],
-        reference_text=[reference_text],
-        reference_codes=[str(codes_path)],   # processor accepts a .npy path directly
-        return_tensors="pt",
-    )
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
-
-    if seed is not None:
-        torch.manual_seed(seed)
-        if model.device.type == "cuda":
-            torch.cuda.manual_seed_all(seed)
-
-    with torch.inference_mode():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            do_sample=True,
-            return_dict_in_generate=True,
-        )
-        print(f"[synth] codes shape={tuple(output.codes.shape)}")
-        waveforms, waveform_lengths = model.decode_audio(output.codes)
-
-    print(f"[synth] generated in {time.time() - t0:.1f}s")
-
-    audio = waveforms[0, : int(waveform_lengths[0])].float().cpu().numpy()
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(output_path), audio, model.config.codec_sample_rate)
-    duration = len(audio) / model.config.codec_sample_rate
-    print(f"[synth] wrote {output_path} ({duration:.2f}s audio @ {model.config.codec_sample_rate} Hz)")
-    return output_path
-
 
 # ---------------------------------------------------------------------------
 # Streaming synthesis (generate + play as codes come out)
@@ -329,11 +292,14 @@ def _optimized_generate_codebooks(
 ) -> torch.Tensor:
     """Workspace override for Audio8's remote _generate_codebooks()."""
     hidden = self.fast_project_in(slow_hidden)
+    fast_positions = torch.arange(
+        self.config.num_codebooks, device=hidden.device, dtype=torch.long
+    )
 
     # Position 0 populates the fast KV cache; its logits are intentionally
     # unused by the original model and must still be computed.
     fast_start = _profile_start()
-    self._fast_step(hidden, 0)
+    self._fast_step(hidden, fast_positions[0:1])
     _profile_end("fast_step", 0, fast_start)
 
     current = (semantic - self.config.semantic_begin_id).clamp(
@@ -350,7 +316,7 @@ def _optimized_generate_codebooks(
 
     for position in range(1, self.config.num_codebooks):
         fast_start = _profile_start()
-        scores = self._fast_step(hidden, position)
+        scores = self._fast_step(hidden, fast_positions[position:position + 1])
         _profile_end("fast_step", position, fast_start)
 
         filter_start = _profile_start()
@@ -398,15 +364,30 @@ def _enable_fast_sdpa(model) -> None:
 
 def _compile_fast_step(model) -> None:
     """Compile the small, repeatedly-called fast Transformer step."""
+    def tensor_fast_step(self, hidden, cache_position):
+        key_mask = torch.ones(
+            (hidden.shape[0], self.config.num_codebooks),
+            device=hidden.device,
+            dtype=torch.bool,
+        )
+        rope = self.fast_freqs_cis[cache_position]
+        mask = self._causal_mask(
+            key_mask, cache_position, self.config.num_codebooks
+        )
+        for layer in self.fast_layers:
+            hidden = layer(hidden, rope, mask, cache_position)
+        return self.fast_output(self.fast_norm(hidden))[:, -1]
+
+    original_fast_step = types.MethodType(tensor_fast_step, model)
     compiler = getattr(torch, "compile", None)
     if compiler is None:
+        model._fast_step = original_fast_step
         print("[info] torch.compile unavailable; using eager fast_step")
         return
     try:
-        original_fast_step = model._fast_step
         compiled_fast_step = compiler(
-            model._fast_step,
-            mode="reduce-overhead",
+            original_fast_step,
+            mode="default",
             fullgraph=False,
             dynamic=False,
         )
@@ -418,12 +399,10 @@ def _compile_fast_step(model) -> None:
                 try:
                     return compiled_fast_step(*args, **kwargs)
                 except Exception as exc:
-                    # Inductor/Triton failures often occur only at the first
-                    # invocation, not while torch.compile() is created.
                     compile_state["active"] = False
                     model._fast_step = original_fast_step
                     print(
-                        f"[info] fast_step compile runtime failure; "
+                        f"[info] fast_step compile runtime fallback; "
                         f"using eager ({exc})"
                     )
                     return original_fast_step(*args, **kwargs)
@@ -432,26 +411,273 @@ def _compile_fast_step(model) -> None:
         model._fast_step = safe_fast_step
         print("[info] enabled torch.compile for fast_step")
     except Exception as exc:
+        model._fast_step = original_fast_step
         print(f"[info] fast_step compile unavailable; using eager ({exc})")
 
 
-class _PlaybackBuffer:
-    """Low-overhead PCM queue with a background PortAudio writer.
+def _compile_slow_step(model) -> None:
+    """Compile the autoregressive semantic / slow Transformer step."""
+    if not hasattr(torch, "compile"):
+        return
+    try:
+        orig_slow_step = model._slow_step
+        compiled_slow_step = torch.compile(
+            orig_slow_step,
+            mode="default",
+            fullgraph=False,
+            dynamic=True,
+        )
+        compile_state = {"active": True}
 
-    The producer never calls sounddevice.write(), so model inference is not
-    blocked by audio I/O. The queue is intentionally bounded to expose
-    underruns/backpressure instead of growing without limit.
+        def safe_slow_step(*args, **kwargs):
+            if compile_state["active"]:
+                try:
+                    return compiled_slow_step(*args, **kwargs)
+                except Exception as exc:
+                    compile_state["active"] = False
+                    model._slow_step = orig_slow_step
+                    print(
+                        f"[info] slow_step compile runtime fallback; "
+                        f"using eager ({exc})"
+                    )
+                    return orig_slow_step(*args, **kwargs)
+            return orig_slow_step(*args, **kwargs)
+
+        model._slow_step = safe_slow_step
+        print("[info] enabled torch.compile for _slow_step")
+    except Exception as exc:
+        print(f"[info] _slow_step compile unavailable; using eager ({exc})")
+
+
+def _compile_codec(model) -> None:
+    """Compile audio codec decoder (vocoder)."""
+    if not hasattr(torch, "compile"):
+        return
+    if hasattr(model, "decode_audio"):
+        try:
+            orig_decode = model.decode_audio
+            compiled_decode = torch.compile(
+                orig_decode,
+                mode="default",
+                fullgraph=False,
+                dynamic=True,
+            )
+            compile_state = {"active": True}
+
+            def safe_decode(*args, **kwargs):
+                if compile_state["active"]:
+                    try:
+                        return compiled_decode(*args, **kwargs)
+                    except Exception as exc:
+                        compile_state["active"] = False
+                        model.decode_audio = orig_decode
+                        print(
+                            f"[info] decode_audio compile runtime fallback; "
+                            f"using eager ({exc})"
+                        )
+                        return orig_decode(*args, **kwargs)
+                return orig_decode(*args, **kwargs)
+
+            model.decode_audio = safe_decode
+            print("[info] enabled torch.compile for decode_audio (vocoder)")
+        except Exception as exc:
+            print(f"[info] decode_audio compile unavailable; using eager ({exc})")
+
+
+def compile_audio8_model(model) -> None:
+    """Compile performance-critical model components with torch.compile."""
+    if hasattr(torch, "_dynamo"):
+        torch._dynamo.config.suppress_errors = True
+        torch._dynamo.config.cache_size_limit = 64
+
+    # fast_step is called 8-9 times per frame with fixed shapes, giving immediate
+    # speedups with near-instant JIT compilation.
+    _compile_fast_step(model)
+
+    # slow_step contains complex 32-layer dynamic KV caches and symbolic mask tensors.
+    # Its PyTorch FlashAttention SDPA is already extremely fast (RTF < 0.3).
+    # Compiling it requires long symbolic tracing (sym_node) on first run.
+    #
+    # WARNING: measured on this workload, enabling this made things ~5x
+    # SLOWER (RTF 1.0 -> 4.9), not faster. The AR loop feeds a fresh
+    # `torch.tensor([prompt_width + step])` every iteration (see
+    # _generate_streaming), so the growing cache position looks like a
+    # new compile-time constant on (what appears to be) many steps
+    # instead of a stable symbolic dim -- causing Dynamo to recompile
+    # repeatedly across the generation loop rather than compiling once
+    # and reusing the graph. Left here as an opt-in experiment only;
+    # do not enable by default for this AR shape.
+    if os.environ.get("AUDIO8_COMPILE_SLOW", "0") == "1":
+        # Reduces (but does not eliminate) the decode_audio graph break
+        # from `int(valid.sum().item())` by letting Dynamo capture the
+        # scalar symbolically instead of guard-and-break. This is a
+        # secondary issue -- the recompile storm above is the dominant
+        # cost -- so don't expect this alone to fix RTF.
+        torch._dynamo.config.capture_scalar_outputs = True
+        _compile_slow_step(model)
+        _compile_codec(model)
+
+
+def _warmup_decode_audio_shapes(
+    model,
+    chunk_frames: int,
+    overlap_frames: int,
+) -> None:
+    """Explicitly exercise model.decode_audio() on every distinct window
+    length that _CodeStreamer actually produces during real streaming:
+      - the first chunk (length == chunk_frames, no overlap yet)
+      - a steady-state chunk (length == chunk_frames + overlap_frames)
+      - a ragged tail chunk (some other, smaller length)
+
+    Why this matters: torch.compile(dynamic=True) on decode_audio only
+    generalizes a dimension to a true symbolic size after it has SEEN at
+    least two different values for it. A warm-up that never produces more
+    than one window shape (e.g. a very short throwaway sentence that ends
+    before a full chunk_frames worth of audio is generated) leaves that
+    generalization to happen on the first differently-shaped window of the
+    REAL request instead -- which is exactly the mid-stream recompile that
+    caused the playback stutter. Calling decode_audio directly with dummy
+    codes sidesteps relying on how many frames a warm-up sentence happens
+    to produce.
+    """
+    num_codebooks = int(model.config.num_codebooks)
+    lengths = sorted({
+        max(1, chunk_frames),
+        max(1, chunk_frames + overlap_frames),
+        max(1, chunk_frames - max(1, overlap_frames // 2)),
+    })
+    for length in lengths:
+        dummy_codes = torch.zeros(
+            (1, num_codebooks, length), dtype=torch.long, device=model.device
+        )
+        try:
+            with torch.inference_mode():
+                model.decode_audio(dummy_codes)
+        except Exception as exc:
+            print(f"[info] decode_audio warm-up shape={length} failed (continuing): {exc}")
+
+
+def warmup_model(
+    model,
+    processor,
+    voices_dir: Path,
+    voice_name: str,
+    max_new_tokens: int = 24,
+    chunk_frames: int = 16,
+    overlap_frames: int = 8,
+) -> None:
+    """Run one short, silent, throwaway generation to pay any torch.compile
+    first-call compilation cost up front, so it never gets folded into the
+    RTF measurement (or the audible playback) of the real request.
+
+    Also explicitly warms decode_audio on every window shape the real
+    streaming pipeline will use (see _warmup_decode_audio_shapes) -- a
+    short warm-up sentence alone isn't reliable for this, since it may not
+    generate enough frames to ever hit more than one chunk shape.
+
+    Safe to call even when nothing is compiled -- it just costs a small
+    eager forward pass in that case.
+    """
+    print("[info] warm-up pass (discarded output, primes torch.compile)...")
+    t0 = time.time()
+    try:
+        stream_synthesize(
+            model=model,
+            processor=processor,
+            text="Hello.",
+            voice_name=voice_name,
+            voices_dir=voices_dir,
+            max_new_tokens=max_new_tokens,
+            chunk_frames=chunk_frames,
+            overlap_frames=overlap_frames,
+            play=False,
+            save_to=None,
+        )
+    except Exception as exc:
+        print(f"[info] warm-up pass raised (continuing anyway): {exc}")
+    _warmup_decode_audio_shapes(model, chunk_frames, overlap_frames)
+    print(f"[info] warm-up done in {time.time() - t0:.1f}s")
+
+
+def load_compile_cache(path: Path = COMPILE_CACHE_PATH) -> bool:
+    """Pre-populate torch.compile's caches (Dynamo guards, AOTAutograd,
+    Inductor, Triton, autotuning results) from a snapshot saved by
+    save_compile_cache() in a previous run.
+
+    Call this BEFORE compile_audio8_model()/warmup_model(). If a call's
+    input shapes exactly match what was captured in the snapshot, that call
+    can skip cold compilation almost entirely; shapes never seen before
+    still compile normally (and can be folded into a future snapshot).
+    Safe no-op if the API is unavailable in this torch build or no
+    snapshot exists yet.
+    """
+    if not hasattr(torch, "compiler") or not hasattr(torch.compiler, "load_cache_artifacts"):
+        print("[info] torch.compiler cache-artifacts API unavailable in this torch build")
+        return False
+    if not path.is_file():
+        print(f"[info] no compile cache at {path} yet (first run will create one)")
+        return False
+    try:
+        artifact_bytes = path.read_bytes()
+        torch.compiler.load_cache_artifacts(artifact_bytes)
+        print(f"[info] loaded compile cache from {path} ({len(artifact_bytes) / 1e6:.1f} MB)")
+        return True
+    except Exception as exc:
+        print(f"[info] failed to load compile cache, continuing cold ({exc})")
+        return False
+
+
+def save_compile_cache(path: Path = COMPILE_CACHE_PATH) -> None:
+    """Snapshot torch.compile's current caches to disk.
+
+    Call this AFTER at least one successful compiled forward pass (right
+    after warmup_model() is the natural spot) so the next process launch
+    can call load_compile_cache() and skip most of the cold-compile cost
+    for any shape already exercised in this run.
+
+    NOTE: snapshots are only valid for the same torch/CUDA/GPU combination
+    they were captured on -- if you change hardware or upgrade torch,
+    delete the old file and let it regenerate.
+    """
+    if not hasattr(torch, "compiler") or not hasattr(torch.compiler, "save_cache_artifacts"):
+        return
+    try:
+        artifacts = torch.compiler.save_cache_artifacts()
+        if artifacts is None:
+            print("[info] nothing to save yet (no compiled artifacts produced)")
+            return
+        artifact_bytes, _cache_info = artifacts
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(artifact_bytes)
+        print(f"[info] saved compile cache to {path} ({len(artifact_bytes) / 1e6:.1f} MB)")
+    except Exception as exc:
+        print(f"[info] failed to save compile cache: {exc}")
+
+
+class _PlaybackBuffer:
+    """Low-overhead PCM queue with seamless playback and graceful completion.
+
+    Guarantees that all streamed audio chunks are physically played to the
+    very end before the stream is closed and output files are written.
+
+    Also tolerates real ALSA/PortAudio xruns (hardware buffer underruns),
+    which are common on WSL2/WSLg's virtual audio device: if PortAudio's
+    own internal recovery (AlsaRestart) fails and the stream silently dies,
+    a watchdog notices and recreates the OutputStream so playback of the
+    still-buffered audio can resume, instead of the rest of the audio
+    going permanently silent.
     """
 
     def __init__(
         self,
         sample_rate: int,
-        prefetch_seconds: float = 0.8,
-        max_buffer_seconds: float = 4.0,
+        prefetch_seconds: float = 1.0,
+        max_buffer_seconds: float = 8.0,
         blocksize: int = 2048,
+        latency: float | str = 0.3,
+        max_restart_attempts: int = 5,
     ):
-        import queue
-        import threading
+        import collections
 
         self._sample_rate = sample_rate
         self._prefetch_samples = max(1, int(sample_rate * prefetch_seconds))
@@ -459,18 +685,30 @@ class _PlaybackBuffer:
             self._prefetch_samples,
             int(sample_rate * max_buffer_seconds),
         )
-        self._queue: queue.Queue[np.ndarray | None] = queue.Queue()
-        self._pending = 0
+        self._buffer: collections.deque[np.ndarray] = collections.deque()
+        self._pending_samples = 0
+        self._total_samples_fed = 0
         self._started = False
         self._closed = False
-        self._thread: threading.Thread | None = None
+        self._start_perf_time: float | None = None
+        self._is_buffering = True
+        self._lock = threading.Lock()
         self._stream = None
         self._blocksize = blocksize
-        self._lock = threading.Lock()
+        # A numeric latency (seconds) is a real request to PortAudio for a
+        # bigger hardware buffer. The string "high" is only a hint and, on
+        # WSL2/WSLg's virtual audio device, was observed not to be enough
+        # to avoid xruns -- an explicit value gives more headroom against
+        # GIL contention from the decode/generation threads.
+        self._latency = latency
+        self._max_restart_attempts = max(0, int(max_restart_attempts))
+        self._restart_count = 0
+        self._watchdog_thread: threading.Thread | None = None
+        self._watchdog_stop = threading.Event()
 
     def buffered_seconds(self) -> float:
         with self._lock:
-            return self._pending / self._sample_rate
+            return max(0, self._pending_samples) / self._sample_rate
 
     def feed(self, chunk: np.ndarray) -> None:
         if self._closed or chunk.size == 0:
@@ -479,72 +717,185 @@ class _PlaybackBuffer:
             np.clip(chunk, -1.0, 1.0).astype(np.float32, copy=False)
         )
 
-        # Don't allow an accidental producer burst to create an unbounded
-        # latency queue. Waiting here is preferable to accumulating seconds
-        # of stale audio.
         while not self._closed:
             with self._lock:
-                enough_room = (
-                    self._pending + chunk.size <= self._max_buffer_samples
-                )
-            if enough_room:
-                break
+                if self._pending_samples + chunk.size <= self._max_buffer_samples:
+                    self._buffer.append(chunk)
+                    self._pending_samples += chunk.size
+                    self._total_samples_fed += chunk.size
+                    if not self._started and self._pending_samples >= self._prefetch_samples:
+                        self._start()
+                    break
             time.sleep(0.002)
 
-        self._queue.put(chunk)
+    def _audio_callback(self, outdata, frames, time_info, status):
+        if status:
+            # status carries flags like output_underflow. We can't fix an
+            # xrun from inside the callback (that's PortAudio/ALSA's own
+            # recovery path, which is what failed) -- just note it so the
+            # watchdog's restart, if one follows, is explainable in logs.
+            print(f"[stream] audio callback status: {status}")
+
+        needed = frames
+        out_ptr = 0
+
         with self._lock:
-            self._pending += chunk.size
+            if self._is_buffering:
+                if self._pending_samples < self._prefetch_samples and not self._closed:
+                    outdata.fill(0)
+                    return
+                self._is_buffering = False
 
-        if not self._started and self._pending >= self._prefetch_samples:
-            self._start()
+            while needed > 0 and self._buffer:
+                chunk = self._buffer[0]
+                chunk_len = len(chunk)
+                if chunk_len <= needed:
+                    outdata[out_ptr : out_ptr + chunk_len, 0] = chunk
+                    out_ptr += chunk_len
+                    needed -= chunk_len
+                    self._pending_samples = max(0, self._pending_samples - chunk_len)
+                    self._buffer.popleft()
+                else:
+                    outdata[out_ptr : out_ptr + needed, 0] = chunk[:needed]
+                    self._buffer[0] = chunk[needed:]
+                    self._pending_samples = max(0, self._pending_samples - needed)
+                    out_ptr += needed
+                    needed = 0
 
-    def _start(self) -> None:
+            if needed > 0:
+                outdata[out_ptr:, 0] = 0
+                if not self._closed:
+                    self._is_buffering = True
+
+    def _open_stream(self) -> None:
         import sounddevice as sd
-        import threading
 
-        if self._started:
-            return
         self._stream = sd.OutputStream(
             samplerate=self._sample_rate,
             channels=1,
             dtype="float32",
             blocksize=self._blocksize,
+            latency=self._latency,
+            callback=self._audio_callback,
         )
         self._stream.start()
-        self._started = True
-        self._thread = threading.Thread(
-            target=self._worker,
-            name="audio8-playback",
-            daemon=True,
-        )
-        self._thread.start()
 
-    def _worker(self) -> None:
-        while True:
-            chunk = self._queue.get()
+    def _start(self) -> None:
+        if self._started:
+            return
+        try:
+            self._open_stream()
+            self._started = True
+            self._start_perf_time = time.perf_counter()
+            self._watchdog_thread = threading.Thread(
+                target=self._watchdog_loop, name="audio8-playback-watchdog", daemon=True
+            )
+            self._watchdog_thread.start()
+        except Exception as exc:
+            print(f"[stream] warning: audio device start failed ({exc})")
+
+    def _watchdog_loop(self) -> None:
+        """Detect a PortAudio stream that died underneath us (e.g. because
+        its own ALSA-xrun recovery failed) and recreate it so any audio
+        still sitting in self._buffer isn't stranded and lost in silence.
+        """
+        while not self._watchdog_stop.wait(0.5):
+            if self._closed:
+                return
+            stream = self._stream
+            if stream is None:
+                continue
             try:
-                if chunk is None:
-                    return
-                self._stream.write(chunk.reshape(-1, 1))
-                with self._lock:
-                    self._pending = max(0, self._pending - chunk.size)
-            finally:
-                self._queue.task_done()
+                alive = stream.active
+            except Exception:
+                alive = False
+            if alive:
+                continue
+            # Stream is no longer active but we didn't ask it to stop.
+            with self._lock:
+                still_have_audio = self._pending_samples > 0 or bool(self._buffer)
+            if not still_have_audio:
+                continue
+            if self._restart_count >= self._max_restart_attempts:
+                print(
+                    "[stream] warning: audio stream died and max restart "
+                    f"attempts ({self._max_restart_attempts}) exhausted; "
+                    "remaining buffered audio will not be played."
+                )
+                return
+            self._restart_count += 1
+            print(
+                f"[stream] audio stream died unexpectedly (likely an ALSA "
+                f"xrun the driver couldn't recover from) -- restarting "
+                f"(attempt {self._restart_count}/{self._max_restart_attempts})"
+            )
+            try:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+                self._is_buffering = True  # re-prime prefetch on the new stream
+                self._open_stream()
+            except Exception as exc:
+                print(f"[stream] warning: audio stream restart failed ({exc})")
 
-    def close(self) -> None:
+    def close(self, drain_timeout: float | None = None) -> None:
         if self._closed:
             return
+        # Set this BEFORE the drain wait, not after: _audio_callback uses
+        # `not self._closed` to decide whether a short tail (less than a
+        # full prefetch_seconds worth) is still allowed to play immediately
+        # instead of waiting to re-fill the normal prefetch threshold. If
+        # this flag isn't set until after the wait loop, a underrun near
+        # the very end of the stream (common, since the last chunk is
+        # often shorter than prefetch_seconds) makes the callback wait
+        # forever for data that will never arrive -- which is exactly the
+        # "timed out waiting for playback to drain" case.
         self._closed = True
-        if not self._started and self._pending > 0:
-            self._start()
-        if self._started:
-            self._queue.join()
-            self._queue.put(None)
-            if self._thread is not None:
-                self._thread.join(timeout=60)
-            if self._stream is not None:
+
+        with self._lock:
+            if not self._started and self._pending_samples > 0:
+                self._start()
+
+        # Wait until EVERY SINGLE audio sample in self._buffer is physically
+        # consumed by the callback -- but bounded, in case the stream keeps
+        # dying and the watchdog exhausts its restart attempts, so a broken
+        # audio device can't hang the whole program forever.
+        if drain_timeout is None:
+            drain_timeout = max(30.0, self._max_buffer_samples / self._sample_rate * 4.0)
+        deadline = time.perf_counter() + drain_timeout
+        while True:
+            with self._lock:
+                done = (len(self._buffer) == 0 and self._pending_samples <= 0)
+            if done or not self._started:
+                break
+            if time.perf_counter() > deadline:
+                print(
+                    "[stream] warning: timed out waiting for playback to "
+                    "drain (audio device likely unrecoverable); closing anyway"
+                )
+                break
+            time.sleep(0.05)
+
+        self._watchdog_stop.set()
+        if self._watchdog_thread is not None:
+            self._watchdog_thread.join(timeout=2.0)
+
+        # Allow 0.5s for the physical sound card / ALSA DMA buffer to complete playback
+        time.sleep(0.5)
+
+        if self._stream is not None:
+            try:
+                # stop() blocks until buffered audio has actually finished
+                # playing (drains the driver/ALSA buffer first). abort()
+                # stops immediately and discards whatever is still sitting
+                # in that buffer, which is what was truncating the tail of
+                # playback right before output.wav got written.
                 self._stream.stop()
                 self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
 
 
 class _CodeStreamer:
@@ -764,6 +1115,7 @@ def _generate_streaming(
 ) -> None:
     """Run Audio8 token generation and feed each frame to *streamer*."""
     from torch import Tensor
+    from torch.nn.attention import SDPBackend, sdpa_kernel
     from transformers.generation import StoppingCriteriaList
     _reset_fast_profile(model.device)
     prompt, prompt_mask = model._prepare_prompt(**inputs)
@@ -798,13 +1150,34 @@ def _generate_streaming(
         slow_step_seconds = 0.0
         codebook_seconds = 0.0
 
+    # Allow Flash / MemEfficient SDPA if supported by hardware
+    sdp_backends = []
+    if torch.cuda.is_available():
+        if torch.backends.cuda.flash_sdp_enabled():
+            for name in ("FLASH_ATTENTION", "FLASH"):
+                if hasattr(SDPBackend, name):
+                    sdp_backends.append(getattr(SDPBackend, name))
+                    break
+        if torch.backends.cuda.mem_efficient_sdp_enabled():
+            for name in ("EFFICIENT_ATTENTION", "MEM_EFFICIENT"):
+                if hasattr(SDPBackend, name):
+                    sdp_backends.append(getattr(SDPBackend, name))
+                    break
+        if hasattr(SDPBackend, "CUDNN_ATTENTION") and getattr(torch.backends.cuda, "cudnn_sdp_enabled", lambda: False)():
+            sdp_backends.append(SDPBackend.CUDNN_ATTENTION)
+        if torch.backends.cuda.math_sdp_enabled() and hasattr(SDPBackend, "MATH"):
+            sdp_backends.append(SDPBackend.MATH)
+    if not sdp_backends and hasattr(SDPBackend, "MATH"):
+        sdp_backends = [SDPBackend.MATH]
+
     if timing_on_cuda:
         component_start = torch.cuda.Event(enable_timing=True)
         component_end = torch.cuda.Event(enable_timing=True)
         component_start.record()
     else:
         slow_start_time = time.perf_counter()
-    logits, slow_hidden = model._slow_step(prompt, cache_position, position_ids, prompt_mask)
+    with sdpa_kernel(sdp_backends):
+        logits, slow_hidden = model._slow_step(prompt, cache_position, position_ids, prompt_mask)
     if timing_on_cuda:
         component_end.record()
         slow_step_events.append((component_start, component_end))
@@ -891,18 +1264,16 @@ def _generate_streaming(
             prompt_mask = prompt_mask_buffer[:, : prompt_width + step + 1]
             physical_position = torch.tensor([prompt_width + step], device=model.device)
             token_position = (prompt_lengths + step)[:, None]
-            # Let PyTorch select the fastest compatible SDPA backend.  The
-            # previous forced MATH backend disabled fused attention kernels
-            # for every incremental slow-model step.
             if timing_on_cuda:
                 component_start = torch.cuda.Event(enable_timing=True)
                 component_end = torch.cuda.Event(enable_timing=True)
                 component_start.record()
             else:
                 slow_start_time = time.perf_counter()
-            logits, slow_hidden = model._slow_step(
-                next_column, physical_position, token_position, prompt_mask
-            )
+            with sdpa_kernel(sdp_backends):
+                logits, slow_hidden = model._slow_step(
+                    next_column, physical_position, token_position, prompt_mask
+                )
             if timing_on_cuda:
                 component_end.record()
                 slow_step_events.append((component_start, component_end))
@@ -1081,11 +1452,8 @@ model = (
 )
 print(f"[info] loaded model")
 _install_optimized_codebook_generation(model)
-# Fast-layer SDPA was benchmarked but regressed this workload substantially
-# (short masked sequences selected a slower path on this GPU). Keep the
-# top-k/codebook optimizations enabled while using the model's original eager
-# fast attention implementation.
-_compile_fast_step(model)
+load_compile_cache()  # populate caches BEFORE compiling / first call
+compile_audio8_model(model)
 
 # Step 1 — register the reference voice (only runs encoding when needed)
 register_voice(
@@ -1097,6 +1465,17 @@ register_voice(
     voices_dir=VOICES_DIR,
     overwrite=True,          # set True to force re-encoding
 )
+
+# Step 1b — warm up torch.compile (if any modules are compiled) on a
+# short throwaway sentence, so compilation cost is not counted in the
+# real request's RTF or heard as playback stutter.
+warmup_model(
+    model=model,
+    processor=processor,
+    voices_dir=VOICES_DIR,
+    voice_name=VOICE_NAME,
+)
+save_compile_cache()  # snapshot for the next process launch
 
 # Step 2b — same thing, but streamed: decodes + plays audio as codes are
 # produced instead of waiting for the full sequence. Requires:
@@ -1114,12 +1493,12 @@ stream_synthesize(
     top_p=0.95,
     top_k=50,
     seed=random.randint(0, 1000),
-    chunk_frames=16,
-    overlap_frames=8,
+    chunk_frames=32,
+    overlap_frames=16,
     crossfade_ms=20.0,
-    prefetch_seconds=0.8,
-    max_buffer_seconds=4.0,
+    prefetch_seconds=1.0,
+    max_buffer_seconds=6.0,
     max_decode_queue=2,
-    play=False,
+    play=True,
     save_to=OUTPUT_PATH,
 )
