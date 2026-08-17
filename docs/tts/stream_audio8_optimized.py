@@ -125,9 +125,7 @@ def _report_fast_profile() -> None:
 
 MODEL_ID = "Audio8/Audio8-TTS-Preview-0.6b"
 
-# TEXT = "最高の音質体験をしていただくために、本物をサポートしてください。良いアニメーション、良い音楽、忘れられない思い出。忘れられないことを願っています。"
-TEXT = "We may use artificial intelligence (AI) tools to support parts of the hiring process, such as reviewing applications, analyzing resumes, or assessing responses and identifying potential inconsistencies or verification signals in application materials based on available information. These tools assist our recruitment team but do not replace human judgment. Final hiring decisions are ultimately made by humans. If you would like more information about how your data is processed, please contact us."
-
+TEXT = "最高の音質体験をしていただくために、本物をサポートしてください。良いアニメーション、良い音楽、忘れられない思い出。忘れられないことを願っています。"
 OUTPUT_PATH = "output.wav"
 
 # Reference voice for zero-shot voice cloning.
@@ -800,8 +798,6 @@ class _PlaybackBuffer:
         still sitting in self._buffer isn't stranded and lost in silence.
         """
         while not self._watchdog_stop.wait(0.5):
-            if self._closed:
-                return
             stream = self._stream
             if stream is None:
                 continue
@@ -812,6 +808,14 @@ class _PlaybackBuffer:
             if alive:
                 continue
             # Stream is no longer active but we didn't ask it to stop.
+            # Deliberately NOT gated on self._closed here: close() sets
+            # that flag immediately (needed by _audio_callback to allow a
+            # short final tail to play without waiting on the full
+            # prefetch threshold -- see close()), well before playback has
+            # actually finished draining. If the stream dies during that
+            # drain window we still want to restart it and finish playing
+            # what's left; self._watchdog_stop (set only after the drain
+            # loop in close() completes) is the real "give up" signal.
             with self._lock:
                 still_have_audio = self._pending_samples > 0 or bool(self._buffer)
             if not still_have_audio:
@@ -1496,7 +1500,7 @@ stream_synthesize(
     chunk_frames=32,
     overlap_frames=16,
     crossfade_ms=20.0,
-    prefetch_seconds=1.0,
+    prefetch_seconds=0.6,
     max_buffer_seconds=6.0,
     max_decode_queue=2,
     play=True,
