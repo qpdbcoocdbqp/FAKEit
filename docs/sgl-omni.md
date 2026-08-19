@@ -64,6 +64,12 @@ sed -i 's/\r$//' ./sglang_omni/scripts/*.sh
 ```bash
 SGLANG_OMNI_PACKAGE="$(python -c 'import sys, importlib.util, pathlib; sys.path.pop(0); s=importlib.util.find_spec("sglang_omni"); assert s and s.origin; print(pathlib.Path(s.origin).parent)')"
 ./sglang_omni/scripts/install_adapter.sh "${SGLANG_OMNI_PACKAGE}"
+
+QWEN3_ASR_CFG=$(find $HOME/.venv -path "*/sglang/srt/configs/qwen3_asr.py" 2>/dev/null)
+echo "${QWEN3_ASR_CFG}"
+sed -i 's/AutoConfig\.register("qwen3_asr", Qwen3ASRConfig)/AutoConfig.register("qwen3_asr", Qwen3ASRConfig, exist_ok=True)/' "${QWEN3_ASR_CFG}"
+echo "patched"
+
 ```
 
 ### 步驟 3.2：驗證安裝
@@ -80,24 +86,25 @@ python3 ./sglang_omni/scripts/verify_install.py --model-path "${MODEL}"
 ### 方案 A：Hopper 架構 GPU（如 H20 / H100）
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-SGLANG_OMNI_ROOT="${SGLANG_OMNI_ROOT}" \
+SGLANG_OMNI_ROOT="${PWD}/source/sglang-omni" \
 MODEL="${MODEL}" \
 AUDIO8_TTS_ENABLE_TORCH_COMPILE=1 \
 AUDIO8_TTS_ATTENTION_BACKEND=fa3 \
 HOST=0.0.0.0 \
 PORT=8010 \
-./sglang_omni/scripts/run_server.sh
+./source/Audio8_TTS/sglang_omni/scripts/run_server.sh
 ```
 
 ### 方案 B：Blackwell / 消費級 GPU（如 RTX 5090 / 4090）
 ```bash
+SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1 \
 CUDA_VISIBLE_DEVICES=0 \
 SGLANG_OMNI_ROOT="${SGLANG_OMNI_ROOT}" \
 MODEL="${MODEL}" \
 AUDIO8_TTS_ATTENTION_BACKEND=flashinfer \
 HOST=0.0.0.0 \
 PORT=8010 \
-./sglang_omni/scripts/run_server.sh
+./source/Audio8_TTS/sglang_omni/scripts/run_server.sh
 ```
 
 ---
