@@ -17,6 +17,7 @@
 *.mp4
 *.flac
 *.npy
+*.log
 sglang-dashboard.json
 qwen3-0.6b-eagle3.json
 

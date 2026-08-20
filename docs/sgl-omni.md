@@ -16,6 +16,11 @@
 ### 系統底層依賴 (Ubuntu / WSL)
 ```bash
 sudo apt update && sudo apt install -y git build-essential ninja-build numactl libnuma-dev
+
+echo 'export CUDA_HOME=/usr/local/cuda-12.9' >> ~/.bashrc
+echo 'export PATH=$CUDA_HOME/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ---
@@ -99,7 +104,7 @@ PORT=8010 \
 ```bash
 SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1 \
 CUDA_VISIBLE_DEVICES=0 \
-SGLANG_OMNI_ROOT="${SGLANG_OMNI_ROOT}" \
+SGLANG_OMNI_ROOT="${PWD}/source/sglang-omni" \
 MODEL="${MODEL}" \
 AUDIO8_TTS_ATTENTION_BACKEND=flashinfer \
 HOST=0.0.0.0 \
@@ -118,7 +123,7 @@ curl -sS -X POST http://localhost:8010/v1/audio/speech \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "audio8/tts-0.6b",
-    "input": "你好，這是 SGLang Omni 與 Audio8-TTS 服務測試。",
+    "input": "Hi, this is SGLang Omni serving Audio8-TTS test.",
     "response_format": "wav",
     "max_new_tokens": 256,
     "temperature": 0.8
