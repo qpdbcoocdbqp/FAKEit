@@ -47,8 +47,6 @@ source ~/.venv/bin/activate
 # 以可編輯模式 (Editable) 安裝最新 sglang-omni 及其所有依賴
 uv pip install -v -e sglang-omni
 
-# 安裝 / 鎖定相容的 transformers 版本
-uv pip install "transformers>=4.57.0,<5.0.0"
 ```
 
 ---
@@ -88,28 +86,19 @@ python3 ./sglang_omni/scripts/verify_install.py --model-path "${MODEL}"
 
 ## 4. 啟動推論服務 (Run Server)
 
-### 方案 A：Hopper 架構 GPU（如 H20 / H100）
-```bash
-CUDA_VISIBLE_DEVICES=0 \
-SGLANG_OMNI_ROOT="${PWD}/source/sglang-omni" \
-MODEL="${MODEL}" \
-AUDIO8_TTS_ENABLE_TORCH_COMPILE=1 \
-AUDIO8_TTS_ATTENTION_BACKEND=fa3 \
-HOST=0.0.0.0 \
-PORT=8010 \
-./source/Audio8_TTS/sglang_omni/scripts/run_server.sh
-```
-
-### 方案 B：Blackwell / 消費級 GPU（如 RTX 5090 / 4090）
 ```bash
 SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1 \
 CUDA_VISIBLE_DEVICES=0 \
-SGLANG_OMNI_ROOT="${PWD}/source/sglang-omni" \
-MODEL="${MODEL}" \
+FLASHINFER_WORKSPACE_BASE=/tmp/audio8-flashinfer \
 AUDIO8_TTS_ATTENTION_BACKEND=flashinfer \
-HOST=0.0.0.0 \
-PORT=8010 \
-./source/Audio8_TTS/sglang_omni/scripts/run_server.sh
+PYTHONPATH="${PWD}/source/sglang-omni${PYTHONPATH:+:${PYTHONPATH}}" \
+python3 -m sglang_omni.cli serve \
+  --model-path "${MODEL}" \
+  --config "${PWD}/source/Audio8_TTS/sglang_omni/configs/audio8_tts_0_6b.yaml" \
+  --model-name "audio8/tts-0.6b" \
+  --host 0.0.0.0 \
+  --port 8010 
+
 ```
 
 ---
@@ -134,46 +123,3 @@ curl -sS -X POST http://localhost:8010/v1/audio/speech \
 - `AUDIO8_TTS_MEM_FRACTION_STATIC`：靜態顯存分配比例（預設 `0.2`，微調可設 `0.1`）。
 - `AUDIO8_TTS_MAX_RUNNING_REQUESTS`：最大並發請求數（預設 `32`）。
 - `AUDIO8_TTS_ENABLE_TORCH_COMPILE`：是否開啟 TorchInductor JIT 編譯加速（`0` 或 `1`）。
-
-
-* `stream_audio8.py`
-
-```python
-import asyncio
-import json
-import websockets
-
-async def main():
-    async with websockets.connect(
-        "ws://localhost:8010/v1/audio/speech/stream"
-    ) as ws:
-        await ws.send(json.dumps({
-            "type": "session.config",
-            "session": {
-                "model": "audio8/tts-0.6b",
-                "response_format": "pcm",
-                "stream_audio": True,
-                "max_new_tokens": 256,
-                "temperature": 0.8,
-            },
-        }))
-        print(await ws.recv())
-        await ws.send(json.dumps({
-            "type": "input.text",
-            "text": "Hi, this is SGLang Omni serving Audio8-TTS test.",
-        }))
-        await ws.send(json.dumps({"type": "input.done"}))
-        with open("test_output.pcm", "wb") as f:
-            while True:
-                message = await ws.recv()
-                if isinstance(message, bytes):
-                    f.write(message)
-                    f.flush()  # 每個 PCM chunk 到達時立刻寫入
-                else:
-                    event = json.loads(message)
-                    print(event)
-                    if event["type"] == "session.done":
-                        break
-
-asyncio.run(main())
-```
