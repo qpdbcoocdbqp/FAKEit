@@ -1,0 +1,31 @@
+services:
+  s2cpp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: s2cpp:latest
+    container_name: s2cpp-server
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "3030:3030"
+    volumes:
+      - ./models:/app/models      # 放 .gguf 模型檔案
+      - ./voices:/app/voices      # 放 .s2voice 聲音 profile
+    environment:
+      MODEL_PATH: /app/models/s2-pro-q6_k.gguf   # 改成你的模型檔案名稱
+      HOST:       0.0.0.0
+      PORT:       3030
+      GPU_LAYERS: -1       # -1 = 全部層放 GPU；改小數字可省 VRAM
+      THREADS:    0        # 0 = 自動偵測 CPU 核心數
+      LOG_LEVEL:  info
+      # EXTRA_ARGS: --codec-cpu --gpu-layers 18   # 顯卡 VRAM 不夠時解除注解
+
+    restart: unless-stopped
+    stdin_open: false
+    tty:    false
