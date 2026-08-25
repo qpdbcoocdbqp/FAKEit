@@ -18,14 +18,12 @@ ENV LIBRARY_PATH=${CUDA_STUB_DIR}:${LIBRARY_PATH}
 WORKDIR /src
 
 # Clone with submodules (ggml is bundled)
-RUN git clone --recurse-submodules https://github.com/rodrigomatta/s2.cpp.git .
+RUN git clone --recurse-submodules https://github.com/rodrigomatta/s2.cpp.git
 
 # Build with CUDA support
-RUN cmake -B build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DS2_CUDA=ON \
-    -DCMAKE_EXE_LINKER_FLAGS="-L${CUDA_STUB_DIR}" \
-    && cmake --build build --parallel 4
+RUN cd s2.cpp \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release -DS2_CUDA=ON -DBUILD_SHARED_LIBS=OFF \
+    && cmake --build build --parallel 6
 
 # ─────────────────────────────────────────────────────────────
 # Stage 2: Runtime  (slim CUDA runtime image)
@@ -42,8 +40,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy binary + tokenizer from build stage
-COPY --from=builder /src/build/s2       ./s2
-COPY --from=builder /src/tokenizer.json ./tokenizer.json
+COPY --from=builder /src/s2.cpp/build/s2       ./s2
+COPY --from=builder /src/s2.cpp/tokenizer.json ./tokenizer.json
 
 # Model and voice profile mounts
 # Models: /app/models   (mount -v /your/path/models:/app/models)
