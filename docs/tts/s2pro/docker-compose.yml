@@ -1,8 +1,5 @@
 services:
   s2cpp:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: s2cpp:latest
     container_name: s2cpp-server
     deploy:
@@ -15,7 +12,7 @@ services:
     ports:
       - "3030:3030"
     volumes:
-      - ./models:/app/models      # 放 .gguf 模型檔案
+      - ${USERPROFILE}/.cache/huggingface/hub/models--rodrigomt--s2-pro-gguf/snapshots/a7320690b5585b03b20ed6484b55926f3015f48d:/app/models      # 放 .gguf 模型檔案
       - ./voices:/app/voices      # 放 .s2voice 聲音 profile
     environment:
       MODEL_PATH: /app/models/s2-pro-q6_k.gguf   # 改成你的模型檔案名稱
@@ -29,3 +26,5 @@ services:
     restart: unless-stopped
     stdin_open: false
     tty:    false
+    healthcheck:
+      disable: true

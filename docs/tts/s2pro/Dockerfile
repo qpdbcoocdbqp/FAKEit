@@ -35,6 +35,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -54,15 +55,8 @@ EXPOSE 3030
 ENV MODEL_PATH=/app/models/s2-pro-q6_k.gguf
 ENV HOST=0.0.0.0
 ENV PORT=3030
-ENV GPU_LAYERS=-1
 ENV THREADS=0
 ENV LOG_LEVEL=info
-
-# Health check — /generate 不接受 GET，用 curl 確認 port 可達
-HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -sf -o /dev/null -w "%{http_code}" \
-        -X POST http://localhost:${PORT}/generate \
-        -F "text=ping" | grep -qE "^(200|400|503)$" || exit 1
 
 ENTRYPOINT ["/bin/sh", "-c", \
     "exec /app/s2 \
@@ -75,4 +69,5 @@ ENTRYPOINT ["/bin/sh", "-c", \
       --threads    \"${THREADS}\" \
       --log-level  \"${LOG_LEVEL}\" \
       --voice-dir  /app/voices \
+      -c 0 \
       $EXTRA_ARGS"]
