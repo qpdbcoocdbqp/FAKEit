@@ -114,11 +114,29 @@ curl -sN -X POST http://localhost:3030/generate \
 ### 使用儲存的聲音 Profile
 
 ```bash
+# 進入容器
+docker exec -it s2cpp-server /bin/sh
+
+# 把參考音檔編碼成 .s2voice
+/app/s2 \
+  --model /app/models/s2-pro-q6_k.gguf \
+  --tokenizer /app/tokenizer.json \
+  --prompt-audio /app/voices/reference.wav \
+  --prompt-text "突然轉錯帳可能是某個系統整個當掉結果回頭一查才發現寫這段的是AI而唯一該把關的人從頭到尾沒看過他那這個鍋到底該誰扛" \
+  --save-voice \
+  --voice-dir /app/voices \
+  --voice reference \
+  --text "test" \
+  --output /tmp/test.wav \
+  -c 0
+
+head -c 8 /app/voices/reference.s2voice | cat -v
+
 # 先把 .s2voice 檔案放到 ./voices/ 目錄
 curl -X POST http://localhost:3030/generate \
-  --form "voice=my_voice" \
+  --form "voice=reference" \
   --form "text=用已儲存的聲音 profile 合成。" \
-  -o output.wav
+  -o reference_output.wav
 ```
 
 ---
