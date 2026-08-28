@@ -51,7 +51,7 @@ RUN mkdir -p models voices
 
 EXPOSE 3030
 
-# 環境變數可覆寫啟動參數
+# Environment variables to override startup parameters
 ENV MODEL_PATH=/app/models/s2-pro-q6_k.gguf
 ENV HOST=0.0.0.0
 ENV PORT=3030

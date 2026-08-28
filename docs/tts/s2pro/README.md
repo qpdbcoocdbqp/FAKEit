@@ -1,62 +1,33 @@
-# s2.cpp Docker 推論伺服器
+# s2.cpp Docker Inference Server
 
-Fish Audio S2 Pro TTS 模型的本地化 Docker 部署方案，基於 [s2.cpp](https://github.com/rodrigomatta/s2.cpp)。
+Local Docker deployment solution for Fish Audio S2 Pro TTS model, based on [s2.cpp](https://github.com/rodrigomatta/s2.cpp).
 
 ---
 
-## 目錄結構
+## Directory Structure
 
 ```
 s2cpp-docker/
-├── Dockerfile          # 兩段式 build (cuda:devel → cuda:runtime)
-├── docker-compose.yml  # GPU 配置 + volume 掛載
-├── download_model.sh   # 從 HuggingFace 下載 GGUF 模型
-├── models/             # 放 .gguf 模型檔（需自行建立）
-└── voices/             # 放 .s2voice 聲音 profile（可選）
+├── Dockerfile          # Multi-stage build (cuda:devel → cuda:runtime)
+├── docker-compose.yml  # GPU configuration + volume mounts
+└── voices/             # Directory for .s2voice voice profiles (optional)
 ```
 
 ---
 
-## 快速開始
+## Quick Start
 
-### 1. 前置需求
-
-- Docker + Docker Compose v2
-- NVIDIA GPU + CUDA 12.4+
-- [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+### 1. Prerequisites
 
 ```bash
-# 確認 GPU 可被 Docker 存取
+# Verify GPU access from Docker
 docker run --rm --gpus all nvidia/cuda:13.2.1-cudnn-devel-ubuntu24.04 nvidia-smi
 
 cd docs/tts/s2pro
 docker build -t s2cpp:latest .
-
 ```
 
-
-### 2. 下載模型
-
-```bash
-chmod +x download_model.sh
-
-# 推薦（6–9 GB VRAM）
-./download_model.sh q6_k
-
-# VRAM 較少時（≥ 6 GB）
-./download_model.sh q4_k_m
-
-# 近乎無損品質（需 ≥ 10 GB VRAM）
-./download_model.sh q8_0
-```
-
-### 3. 啟動伺服器
-
-```bash
-docker compose up --build
-```
-
-首次啟動會編譯 s2.cpp（約 5–10 分鐘）。之後可加 `-d` 在背景執行：
+### 2. Start Server
 
 ```bash
 docker compose up -d
@@ -64,19 +35,19 @@ docker compose up -d
 
 ---
 
-## API 使用方式
+## API Usage
 
-伺服器啟動後監聽 `http://localhost:3030`。
+Once started, the server listens on `http://localhost:3030`.
 
-### 基本合成
+### Basic Synthesis
 
 ```bash
 curl -X POST http://localhost:3030/generate \
-  --form "text=你好，這是語音合成測試。" \
+  --form "text=Hello, this is a speech synthesis test." \
   -o output.wav
 ```
 
-### 帶參數合成
+### Synthesis with Parameters
 
 ```bash
 curl -X POST http://localhost:3030/generate \
@@ -85,44 +56,47 @@ curl -X POST http://localhost:3030/generate \
   -o output.wav
 ```
 
-### 聲音克隆（Voice Cloning）
+### Voice Cloning
 
 ```bash
 curl -X POST http://localhost:3030/generate \
   --form "reference=@reference.wav" \
-  --form "reference_text=參考音訊的逐字稿內容。" \
-  --form "text=用這個聲音合成這段文字。" \
+  --form "reference_text=Transcript content of the reference audio." \
+  --form "text=Synthesize this text using this voice." \
   -o output_cloned.wav
 ```
 
-### 即時串流（PCM16 低延遲）
+### Real-time Streaming (PCM16 Low Latency)
+
+> Note: Live playback via `ffplay` requires `ffmpeg` installed on your host system (e.g., `sudo apt install ffmpeg` on Ubuntu/Debian or `brew install ffmpeg` on macOS).
 
 ```bash
 curl -sN -X POST http://localhost:3030/generate \
-  --form "text=即時串流語音輸出測試。" \
+  --form "voice=reference" \
+  --form "text=Anthropic's learning platform, Claude Academy (academy.claude.com), has launched. Courses, instruction, and real-world use cases are integrated into a single portal, all free, and registration requires only an email address. This wasn't entirely a product from scratch: Anthropic mentioned on its blog that the company already had a dedicated team focused on educational content, researching how to enable the general public to use AI safely and effectively. Claude Academy is essentially a repackaged and publicly released version of this internal training methodology, targeting everyone from employees to the general public." \
   --form 'params={
     "stream": true,
     "chunked": true,
     "output_format": "pcm_s16le",
     "segment_sentences": true,
-    "stream_start_buffer_ms": 4000,
+    "stream_start_buffer_ms": 1000,
     "max_new_tokens": 512
   }' \
 | ffplay -autoexit -nodisp -infbuf -f s16le -ar 44100 -ac 1 -
 ```
 
-### 使用儲存的聲音 Profile
+### Using Saved Voice Profiles
 
 ```bash
-# 進入容器
+# Enter container
 docker exec -it s2cpp-server /bin/sh
 
-# 把參考音檔編碼成 .s2voice
+# Encode reference audio to .s2voice format
 /app/s2 \
   --model /app/models/s2-pro-q6_k.gguf \
   --tokenizer /app/tokenizer.json \
   --prompt-audio /app/voices/reference.wav \
-  --prompt-text "突然轉錯帳可能是某個系統整個當掉結果回頭一查才發現寫這段的是AI而唯一該把關的人從頭到尾沒看過他那這個鍋到底該誰扛" \
+  --prompt-text "Reference prompt transcript text here..." \
   --save-voice \
   --voice-dir /app/voices \
   --voice reference \
@@ -132,65 +106,57 @@ docker exec -it s2cpp-server /bin/sh
 
 head -c 8 /app/voices/reference.s2voice | cat -v
 
-# 先把 .s2voice 檔案放到 ./voices/ 目錄
+# Place the .s2voice file into ./voices/ directory first
 curl -X POST http://localhost:3030/generate \
   --form "voice=reference" \
-  --form "text=用已儲存的聲音 profile 合成。" \
+  --form "text=Welcome to our stream! [excited] Massive sale today! [laughing] Don't miss out!" \
   -o reference_output.wav
 ```
 
 ---
 
-## 環境變數設定
+## Environment Variables
 
-| 變數 | 預設值 | 說明 |
-|------|--------|------|
-| `MODEL_PATH` | `/app/models/s2-pro-q6_k.gguf` | GGUF 模型路徑 |
-| `PORT` | `3030` | 伺服器 port |
-| `GPU_LAYERS` | `-1` | GPU 層數；`-1` = 全部；`0` = 純 CPU |
-| `THREADS` | `0` | CPU 執行緒數；`0` = 自動 |
-| `LOG_LEVEL` | `info` | `error` / `warn` / `info` / `debug` |
-| `EXTRA_ARGS` | — | 額外 CLI 參數，例如 `--codec-cpu` |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODEL_PATH` | `/app/models/s2-pro-q6_k.gguf` | Path to GGUF model file |
+| `HOST` | `0.0.0.0` | Server host binding |
+| `PORT` | `3030` | Server listening port |
+| `GPU_LAYERS` | `-1` | Transformer layers on GPU (`-1` = auto, `0` = CPU only) |
+| `THREADS` | `0` | CPU threads (`0` = auto) |
+| `LOG_LEVEL` | `info` | Log verbosity: `error`, `warn`, `info`, or `debug` |
+| `EXTRA_ARGS` | — | Extra CLI flags (e.g. `--codec-cpu`, `--codec-context-frames 128`) |
 
-### VRAM 不足時的調整
+### Adjustments for Insufficient VRAM
 
-在 `docker-compose.yml` 中設定：
+When GPU VRAM is limited, you can set the following in `docker-compose.yml`:
 
 ```yaml
 environment:
-  GPU_LAYERS: 18       # 只把部分層放 GPU
-  EXTRA_ARGS: --codec-cpu  # codec 留在 CPU 上
+  GPU_LAYERS: 18                              # Offload partial transformer layers to GPU
+  EXTRA_ARGS: --codec-cpu --codec-context-frames 128  # Force codec on CPU and reduce history buffer to save VRAM
 ```
 
-| 顯卡 VRAM | 建議模型 | GPU_LAYERS |
-|-----------|----------|------------|
-| ≥ 10 GB   | q8_0     | -1（全放）  |
-| 8–9 GB    | q6_k     | -1（全放）  |
-| 6–7 GB    | q4_k_m   | 18 + --codec-cpu |
-| < 6 GB    | q4_k_m   | 10 + --codec-cpu |
+VRAM tuning options:
+- `--codec-cpu`: Force codec calculation on CPU even when the model runs on GPU.
+- `--codec-context-frames <n>`: Reduce codec history context length (lower values consume less VRAM).
+- `GPU_LAYERS <n>`: Limit the number of layers offloaded to the GPU.
 
 ---
 
-## 常用指令
+## Useful Commands
 
 ```bash
-# 查看 log
+# View logs
 docker compose logs -f
 
-# 停止
+# Stop server
 docker compose down
 
-# 進入容器
+# Enter container
 docker compose exec s2cpp /bin/bash
 
-# 重新 build（更新 s2.cpp 版本後）
+# Rebuild image (after updating s2.cpp version)
 docker compose build --no-cache
 docker compose up -d
 ```
-
----
-
-## 授權
-
-模型權重受 [Fish Audio Research License](https://github.com/rodrigomatta/s2.cpp/blob/main/LICENSE.md) 約束。
-商業使用需向 Fish Audio 取得授權：business@fish.audio

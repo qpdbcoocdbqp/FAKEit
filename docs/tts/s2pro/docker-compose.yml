@@ -12,16 +12,16 @@ services:
     ports:
       - "3030:3030"
     volumes:
-      - ${USERPROFILE}/.cache/huggingface/hub/models--rodrigomt--s2-pro-gguf/snapshots/a7320690b5585b03b20ed6484b55926f3015f48d:/app/models      # 放 .gguf 模型檔案
-      - ./voices:/app/voices      # 放 .s2voice 聲音 profile
+      - ${USERPROFILE}/.cache/huggingface/hub/models--rodrigomt--s2-pro-gguf/snapshots/a7320690b5585b03b20ed6484b55926f3015f48d:/app/models      # .gguf model file directory
+      - ./voices:/app/voices      # .s2voice voice profile directory
     environment:
-      MODEL_PATH: /app/models/s2-pro-q6_k.gguf   # 改成你的模型檔案名稱
+      MODEL_PATH: /app/models/s2-pro-q6_k.gguf   # Change to your model filename
       HOST:       0.0.0.0
       PORT:       3030
-      GPU_LAYERS: -1       # -1 = 全部層放 GPU；改小數字可省 VRAM
-      THREADS:    0        # 0 = 自動偵測 CPU 核心數
+      GPU_LAYERS: -1       # -1 = auto; set specific integer to limit GPU layers and save VRAM
+      THREADS:    0        # 0 = auto-detect CPU cores
       LOG_LEVEL:  info
-      # EXTRA_ARGS: --codec-cpu --gpu-layers 18   # 顯卡 VRAM 不夠時解除注解
+      # EXTRA_ARGS: --codec-cpu --gpu-layers 18   # Uncomment if GPU VRAM is insufficient
 
     restart: unless-stopped
     stdin_open: false
