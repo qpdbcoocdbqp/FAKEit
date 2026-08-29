@@ -3,6 +3,7 @@ FROM pytorch/pytorch:2.13.0-cuda13.2-cudnn9-runtime
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    MODEL_NAME=Audio8/Audio8-TTS-Preview-0.6b \
     ROOT_MODEL_DIR=/models \
     VOICE_DIR=/voices \
     PRECISION=int4 \

@@ -19,21 +19,26 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from torch_backend import load_model, register_voice, synthesize_to_wav
+try:
+    from torch_backend import load_model, register_voice, synthesize_to_wav
+except ImportError:
+    from .torch_backend import load_model, register_voice, synthesize_to_wav
 
 
-def _model_dir() -> Path:
+MODEL_NAME = os.getenv("MODEL_NAME", "Audio8/Audio8-TTS-Preview-0.6b")
+
+
+def _model_dir() -> Path | str:
     configured = os.getenv("MODEL_DIR")
     if configured:
         return Path(configured).expanduser()
     root = Path(os.getenv("ROOT_MODEL_DIR", "~/.cache/huggingface/hub")).expanduser()
     if (root / "runtime_manifest.json").is_file():
         return root
-    candidates = sorted(root.glob("models--Audio8--Audio8-TTS-Preview-0.6b/snapshots/*"))
+    hf_dir_name = "models--" + MODEL_NAME.replace("/", "--")
+    candidates = sorted(root.glob(f"{hf_dir_name}/snapshots/*"))
     if not candidates:
-        raise RuntimeError(
-            f"Audio8 model not found. Set MODEL_DIR to a model snapshot or mount {root}."
-        )
+        return MODEL_NAME
     return candidates[-1]
 
 

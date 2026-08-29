@@ -1,10 +1,13 @@
 services:
   audio8:
-    build: .
+    image: audio8:latest
+    command: python -m uvicorn src.api_server:app --host 0.0.0.0 --port 8024
     ports:
       - "8024:8024"
     environment:
+      PYTHONPATH: /app/src:/app
       # The mounted directory may be the HF hub root or a direct model snapshot.
+      MODEL_NAME: ${MODEL_NAME:-Audio8/Audio8-TTS-Preview-0.6b}
       ROOT_MODEL_DIR: /models
       VOICE_DIR: /voices
       MODEL_DIR: ${MODEL_DIR:-}
