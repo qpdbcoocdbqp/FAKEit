@@ -8,7 +8,6 @@ import signal
 import logging
 import numpy as np
 import soundcard as sc
-from openai import OpenAI
 
 warnings.filterwarnings("ignore", category=sc.SoundcardRuntimeWarning)
 
@@ -61,11 +60,13 @@ class HypothesisBuffer:
 
         if self.new:
             a, b, t = self.new[0]
-            if abs(a - self.last_commited_time) < 1:
+            # Only deduplicate if word timestamp heavily overlaps with the last committed timestamp (streaming window seam)
+            # Threshold narrowed from 1.0s to 0.2s so identical repeated lyrics in songs are not eaten
+            if abs(a - self.last_commited_time) < 0.2:
                 if self.commited_in_buffer:
                     cn = len(self.commited_in_buffer)
                     nn = len(self.new)
-                    # Compare 1~5 gram, find longest matching tail and discard
+                    # Compare 1~5 gram, find longest matching tail and discard window overlap
                     for i in range(1, min(min(cn, nn), 5) + 1):
                         c    = " ".join([self.commited_in_buffer[-j][2] for j in range(1, i + 1)][::-1])
                         tail = " ".join(self.new[j - 1][2] for j in range(1, i + 1))
@@ -118,7 +119,16 @@ class FasterWhisperASR:
         self.device     = device
         self.compute_type = compute_type
         self.beam_size  = beam_size
-        self.transcribe_kargs: dict = {}
+        self.transcribe_kargs: dict = {
+            "vad_filter": False,
+            "vad_parameters": dict(
+                threshold=0.35,              # Slightly more sensitive VAD threshold (default 0.5) to catch higher-pitch/quieter female voices
+                min_silence_duration_ms=500,
+                speech_pad_ms=400,           # Pad speech boundaries to avoid clipping subtle word onsets/endings
+            ),
+            "repetition_penalty": 1.0,
+            "no_speech_threshold": 0.8,      # Relaxed from 0.6 to 0.8 so female voice segments are not mistakenly discarded
+        }
         self.model = self._load_model()
 
     def _load_model(self):
@@ -162,7 +172,7 @@ class FasterWhisperASR:
                 initial_prompt=init_prompt or None,
                 beam_size=self.beam_size,
                 word_timestamps=True,
-                condition_on_previous_text=True,   # Official: True (utilize prompt context)
+                condition_on_previous_text=False,   # Avoid infinite hallucination loop on prompt repetition
                 **self.transcribe_kargs,
             )
             return list(segments)
@@ -181,7 +191,7 @@ class FasterWhisperASR:
                     initial_prompt=init_prompt or None,
                     beam_size=self.beam_size,
                     word_timestamps=True,
-                    condition_on_previous_text=True,
+                    condition_on_previous_text=False,
                     **self.transcribe_kargs,
                 )
                 return list(segments)
@@ -191,7 +201,7 @@ class FasterWhisperASR:
         """Converts inference result to [(start, end, word), ...]"""
         out = []
         for seg in segments:
-            if getattr(seg, "no_speech_prob", 0.0) > 0.9:   # Official threshold
+            if getattr(seg, "no_speech_prob", 0.0) > 0.8:   # Relaxed threshold to prevent dropping female voice
                 continue
             for w in seg.words:
                 out.append((w.start, w.end, w.word))
@@ -276,6 +286,12 @@ class OnlineASRProcessor:
 
         Returns: (beg, end, "Committed text") or (None, None, "")
         """
+        # Hard-cap: if the buffer has grown beyond buffer_trimming_sec and normal
+        # segment-based trimming could not fire, discard old audio and restart
+        # recognition from the most recent _HARD_TRIM_KEEP_SEC seconds.
+        if len(self.audio_buffer) / self.SAMPLING_RATE > self.buffer_trimming_sec:
+            self._hard_trim_to_recent()
+
         prompt, non_prompt = self.prompt()
         logger.debug(f"PROMPT: {prompt!r}")
         logger.debug(f"CONTEXT: {non_prompt!r}")
@@ -384,15 +400,32 @@ class OnlineASRProcessor:
         """Candidate words in current buffer not yet confirmed (for real-time display)"""
         return self.to_flush(self.transcript_buffer.complete())
 
+    # How many seconds of recent audio to retain after a hard trim
+    _HARD_TRIM_KEEP_SEC: float = 2.0
+
+    def _hard_trim_to_recent(self) -> None:
+        """
+        Forcibly discard all but the most recent _HARD_TRIM_KEEP_SEC seconds of
+        audio_buffer when buffer_trimming_sec is exceeded and normal segment-based
+        trimming could not fire (e.g. no committed words).
+        Resets transcript state so the next inference starts cleanly from the
+        retained audio instead of replaying the full accumulated buffer.
+        """
+        keep_samples = int(self._HARD_TRIM_KEEP_SEC * self.SAMPLING_RATE)
+        n = len(self.audio_buffer)
+        if n <= keep_samples:
+            return
+        new_offset = self.buffer_time_offset + (n - keep_samples) / self.SAMPLING_RATE
+        self.audio_buffer       = self.audio_buffer[-keep_samples:]
+        self.buffer_time_offset = new_offset
+        self.transcript_buffer  = HypothesisBuffer()
+        self.transcript_buffer.last_commited_time = new_offset
+        self.commited = [w for w in self.commited if w[1] > new_offset]
+        logger.debug(f"hard trim: buffer restarted at {new_offset:.2f}s (kept last {self._HARD_TRIM_KEEP_SEC}s)")
+
 
 # ==============================================================================
 # VACOnlineASRProcessor -- Official VAC (Voice Activity Controller) wrapper
-#
-# Differences from older utils.py:
-#   - Older version only used RMS < 0.003 to skip silence, without Voice Activity Detection
-#   - Official uses Silero VAD model to accurately detect speech start/end boundaries
-#   - Stops accumulating audio during non-voice sections, drastically reducing unnecessary inferences
-#   - Immediately calls finish() when voice end is detected, reducing latency
 # ==============================================================================
 
 class VACOnlineASRProcessor(OnlineASRProcessor):
@@ -494,42 +527,110 @@ class VACOnlineASRProcessor(OnlineASRProcessor):
 
 
 # ==============================================================================
-# SubtitleTranslator -- llama.cpp OpenAI-compatible translation endpoint
+# SubtitleTranslator -- llama-cpp-python (TranslateGemma) translation
 # ==============================================================================
 
 class SubtitleTranslator:
-    def __init__(self, base_url="http://127.0.0.1:8080/v1", api_key="no-key", model_name="default"):
-        self.client     = OpenAI(base_url=base_url, api_key=api_key)
-        self.model_name = model_name
-        self._warned    = False
+    """Translates English subtitles to Traditional Chinese using llama-cpp-python asynchronously."""
 
-    def translate(self, text: str) -> str:
+    def __init__(
+        self,
+        model_path: str | None = None,
+        n_ctx: int = 2048,
+        n_gpu_layers: int = -1,
+        on_translated = None,
+    ):
+        from llama_cpp import Llama
+
+        if not model_path:
+            model_path = os.getenv("TRANSLATE_MODEL_PATH")
+        if not model_path:
+            raise ValueError("TRANSLATE_MODEL_PATH is not set in environment or config.")
+
+        self.model_path = os.path.expandvars(os.path.expanduser(model_path))
+        print(f"[Translation] Loading Llama model from {self.model_path} ...")
+        self.llm = Llama(
+            model_path=self.model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            verbose=False,
+        )
+        print("[Translation] Model loaded successfully.")
+        self._warned = False
+        self.on_translated = on_translated
+        self._queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._worker = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker.start()
+
+    def _worker_loop(self):
+        while not self._stop_event.is_set():
+            try:
+                item = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            ts, text = item
+            try:
+                zh = self.translate_en_to_zh(text)
+                if zh and self.on_translated:
+                    self.on_translated(ts, text, zh)
+            except Exception as e:
+                logger.error(f"Error in translation worker: {e}")
+            finally:
+                self._queue.task_done()
+
+    def enqueue(self, text: str, timestamp: str = ""):
+        """Asynchronously enqueue text for translation without blocking the caller."""
+        if text.strip():
+            self._queue.put((timestamp, text))
+
+    def enqueue_translation(self, text: str, timestamp: str = ""):
+        """Alias for enqueue."""
+        self.enqueue(text, timestamp)
+
+    def translate_en_to_zh(self, text: str) -> str:
         if not text.strip():
             return ""
         try:
-            resp = self.client.chat.completions.create(
-                model=self.model_name,
+            response = self.llm.create_chat_completion(
                 messages=[
                     {
-                        "role": "system",
-                        "content": (
-                            "你是一個高精準的即時字幕翻譯員。"
-                            "將使用者的英文語音字幕準確、流暢地翻譯成繁體中文（台灣習慣用詞）。"
-                            "不要添加任何額外解釋、前綴、後綴或引號，直接輸出翻譯後的繁體中文。"
-                        ),
-                    },
-                    {"role": "user", "content": text},
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "source_lang_code": "en",
+                                "target_lang_code": "zh-TW",
+                                "text": text,
+                            }
+                        ],
+                    }
                 ],
-                temperature=0.3,
+                temperature=0,
                 max_tokens=256,
-                timeout=5.0,
             )
-            return resp.choices[0].message.content.strip()
+            return response["choices"][0]["message"]["content"].strip()
         except Exception as e:
             if not self._warned:
-                print(f"\n[Note] Connection to llama.cpp server failed ({e}). Please ensure llama.cpp server is running.")
+                print(f"\n[Note] Translation failed ({e}).")
                 self._warned = True
             return ""
+
+    def stop(self):
+        self._stop_event.set()
+
+
+def clean_repetitive_hallucinations(text: str) -> str:
+    """Removes silence-induced single-word loops while preserving legitimate song lyrics."""
+    words = text.strip().split()
+    if not words:
+        return ""
+    # Only drop if a single word is repeated 5+ times in a row with nothing else (e.g. 'You You You You You')
+    unique_words = {w.lower().strip(".,!?:;") for w in words}
+    if len(unique_words) == 1 and len(words) >= 5:
+        return ""
+    return text
 
 
 # ==============================================================================
@@ -564,18 +665,21 @@ def audio_recorder(audio_queue: queue.Queue, stop_event: threading.Event):
 
 def load_env_config() -> dict:
     """Loads .env configuration (supports python-dotenv or manual reading)"""
+    env_file = os.path.join(os.path.dirname(__file__), ".env")
     try:
         from dotenv import load_dotenv
-        load_dotenv()
+        if os.path.exists(env_file):
+            load_dotenv(env_file, override=True)
+        else:
+            load_dotenv(override=True)
     except ImportError:
-        env_file = os.path.join(os.path.dirname(__file__), ".env")
         if os.path.exists(env_file):
             with open(env_file, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         k, v = line.split("=", 1)
-                        os.environ.setdefault(k.strip(), v.strip())
+                        os.environ[k.strip()] = v.strip()
 
     return {
         "model_size":       os.getenv("MODEL_SIZE",        "small"),
@@ -586,10 +690,11 @@ def load_env_config() -> dict:
         "buffer_trimming":  os.getenv("BUFFER_TRIMMING",   "segment"),
         "buffer_trim_sec":  float(os.getenv("BUFFER_TRIM_SEC", "15")),
         "use_vac":          os.getenv("USE_VAC",           "false").lower() in ("true", "1", "yes"),
-        "vac_chunk_size":   float(os.getenv("VAC_CHUNK_SIZE", "0.04")),
-        "enable_translate": os.getenv("ENABLE_TRANSLATE",  "false").lower() in ("true", "1", "yes"),
-        "llama_url":        os.getenv("LLAMA_URL",         "http://127.0.0.1:8080/v1"),
-        "llama_model":      os.getenv("LLAMA_MODEL",       "default"),
+        "vac_chunk_size":         float(os.getenv("VAC_CHUNK_SIZE", "0.04")),
+        "enable_translate":       os.getenv("ENABLE_TRANSLATE",       "false").lower() in ("true", "1", "yes"),
+        "translate_model_path":   os.getenv("TRANSLATE_MODEL_PATH",   os.getenv("LLAMA_MODEL_PATH", "")),
+        "translate_n_ctx":        int(os.getenv("TRANSLATE_N_CTX",    "2048")),
+        "translate_n_gpu_layers": int(os.getenv("TRANSLATE_N_GPU_LAYERS", "-1")),
     }
 
 
@@ -626,11 +731,21 @@ def main():
     # Translator
     translator = None
     if config["enable_translate"]:
-        translator = SubtitleTranslator(
-            base_url=   config["llama_url"],
-            model_name= config["llama_model"],
-        )
-        print(f"[Translation] Connecting to llama.cpp server: {config['llama_url']}")
+        def on_translated(ts: str, en_text: str, zh_text: str):
+            if zh_text:
+                sys.stdout.write(f"\r\033[K[{ts}] [ZH] {zh_text}\n")
+                sys.stdout.flush()
+
+        try:
+            translator = SubtitleTranslator(
+                model_path=   config["translate_model_path"] or None,
+                n_ctx=        config["translate_n_ctx"],
+                n_gpu_layers= config["translate_n_gpu_layers"],
+                on_translated=on_translated,
+            )
+        except Exception as e:
+            print(f"[Translation] Failed to initialize translator ({e}). Continuing without translation.")
+            translator = None
     else:
         print("[Translation] ENABLE_TRANSLATE=false, outputting real-time English subtitles only")
 
@@ -664,18 +779,42 @@ def main():
 
             if accum_samples >= step_samples:
                 accum_samples = 0
-                beg, end, committed = online.process_iter()
 
-                if committed:
-                    committed_line += (" " if committed_line else "") + committed
-                    if len(committed_line.split()) >= 6:
+                # Compute RMS to skip inference during complete silence
+                rms = float(np.sqrt(np.mean(frame ** 2)))
+                # Lower threshold to 0.0008 to ensure soft/higher-pitch female voices aren't treated as silence
+                # NOTE: do NOT gate on `committed_line` here — if audio ends while committed_line
+                # is non-empty (< 6 words), the old gate caused process_iter() to keep running
+                # on the stale audio_buffer, producing spurious subtitles after playback stopped.
+                if rms < 0.0008:
+                    # Audio has gone silent: flush any accumulated text immediately
+                    # instead of waiting for the 6-word threshold.
+                    if committed_line:
                         ts = time.strftime("%H:%M:%S")
                         sys.stdout.write(f"\r\033[K[{ts}] [EN] {committed_line}\n")
                         sys.stdout.flush()
                         if translator:
-                            chinese = translator.translate(committed_line)
-                            if chinese:
-                                print(f"[{ts}] [ZH] {chinese}")
+                            translator.enqueue(committed_line, timestamp=ts)
+                        committed_line = ""
+                    bars = min(10, int(rms * 200))
+                    sys.stdout.write(f"\r\033[K[Listening {'█' * bars}{'░' * (10 - bars)}]")
+                    sys.stdout.flush()
+                    continue
+
+                beg, end, committed = online.process_iter()
+
+                if committed:
+                    cleaned_committed = clean_repetitive_hallucinations(committed)
+                    if cleaned_committed:
+                        committed_line += (" " if committed_line else "") + cleaned_committed
+                    if len(committed_line.split()) >= 6:
+                        committed_line = clean_repetitive_hallucinations(committed_line)
+                        if committed_line:
+                            ts = time.strftime("%H:%M:%S")
+                            sys.stdout.write(f"\r\033[K[{ts}] [EN] {committed_line}\n")
+                            sys.stdout.flush()
+                            if translator:
+                                translator.enqueue(committed_line, timestamp=ts)
                         committed_line = ""
 
                 # Real-time echo (committed + tentative)
@@ -698,6 +837,8 @@ def main():
             print(f"[{ts}] [EN] {committed_line + ' ' + remaining}".strip())
     finally:
         stop_event.set()
+        if translator:
+            translator.stop()
         os._exit(0)
 
 
