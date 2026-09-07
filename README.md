@@ -168,6 +168,7 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
 * **Reference**
 
     * [Google Gemini Family](docs/google-gemini-family.md)
+    * [Whisper live translate](docs/whisper/README.md)
 
 ## Others
 * [Diffusion model: image generate](diffusion/README.md)
