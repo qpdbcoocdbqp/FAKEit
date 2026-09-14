@@ -80,34 +80,48 @@ python -m script.google-gemini-family
 * Gemma 4 - [llama.cpp](https://github.com/ggml-org/llama.cpp)
 
     ```bash
-    ./llama-server
-    --host 127.0.0.1
-    --port 9006
-    --model /models/models--ggml-org--gemma-4-E4B-it-GGUF/snapshots/6b352c53e1d2e4bb974d9f8cafcf85887c224219/gemma-4-e4b-it-Q4_K_M.gguf
-    --mmproj /models/models--ggml-org--gemma-4-E4B-it-GGUF/snapshots/6b352c53e1d2e4bb974d9f8cafcf85887c224219/mmproj-gemma-4-e4b-it-f16.gguf
-    --threads 1 --parallel 1 --ubatch-size 512
-    --ctx-size 16384 -ctk q4_0 -ctv q4_0
-    -ngl 43  -fa on --no-mmproj-offload
-    --cache-ram 0
-    --reasoning on
-    --jinja
+    ./llama-server \
+        --host 127.0.0.1 \
+        --port 9006 \
+        --model /models/models--ggml-org--gemma-4-E4B-it-GGUF/snapshots/6b352c53e1d2e4bb974d9f8cafcf85887c224219/gemma-4-e4b-it-Q4_K_M.gguf \
+        --mmproj /models/models--ggml-org--gemma-4-E4B-it-GGUF/snapshots/6b352c53e1d2e4bb974d9f8cafcf85887c224219/mmproj-gemma-4-e4b-it-f16.gguf \
+        --threads 1 --parallel 1 --ubatch-size 512 \
+        --ctx-size 16384 -ctk q4_0 -ctv q4_0 \
+        -ngl 43  -fa on --no-mmproj-offload \
+        --cache-ram 0 \
+        --reasoning on \
+        --jinja
     ```
 * Use MTP draft
 
     ```bash
-    ./llama-server
-    --host 127.0.0.1
-    --port 9006
-    --model /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf
-    --mmproj /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/mmproj-BF16.gguf
-    --model-draft /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/mtp-gemma-4-E4B-it.gguf
-    --spec-type draft-mtp --spec-draft-n-max 4
-    --threads 2 --parallel 1 -fa off --n-gpu-layers 49
-    --spec-type draft-mtp
-    --spec-draft-n-max 2
-    --reasoning on
-    --cache-ram 0
-    --jinja
+    ./llama-server \
+        --host 127.0.0.1 \
+        --port 9006 \
+        --model /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf \
+        --mmproj /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/mmproj-BF16.gguf \
+        --model-draft /models/models--unsloth--gemma-4-E4B-it-qat-GGUF/snapshots/bbcd9d849c2541ecc2af7ef64b3c3c2c7aa14e96/mtp-gemma-4-E4B-it.gguf \
+        --spec-type draft-mtp --spec-draft-n-max 4 \
+        --threads 2 --parallel 1 -fa off --n-gpu-layers 49 \
+        --spec-type draft-mtp \
+        --spec-draft-n-max 2 \
+        --reasoning on \
+        --cache-ram 0 \
+        --jinja
+    ```
+
+* `Gemma 4 12B QAT`
+
+    ```bash
+    ./llama-server \
+        --host 127.0.0.1 --port 9006 \
+        --model /models/models--unsloth--gemma-4-12B-it-qat-GGUF/snapshots/980b060c40a8539ac159e0501a3e0f66a6365af3/gemma-4-12B-it-qat-UD-Q4_K_XL.gguf \
+        --n-gpu-layers 49 -fa on --threads 2 --parallel 1 \
+        --model-draft /models/models--unsloth--gemma-4-12B-it-qat-GGUF/snapshots/980b060c40a8539ac159e0501a3e0f66a6365af3/mtp-gemma-4-12B-it.gguf \
+        --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-ngl 5 -ctkd q4_0 -ctvd q4_0 \
+        -c 8192 -ctk q4_0 -ctv q4_0 --cache-ram 0 \
+        --temp 1.0 --top-p 0.95 --top-k 64 -fit off
+
     ```
 
 * DiffusionGemma
