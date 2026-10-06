@@ -1,4 +1,4 @@
-FROM lmsysorg/sglang:v0.5.6.post2-cu130-runtime AS stage
+FROM lmsysorg/sglang:v0.5.21-runtime AS stage
 RUN git clone https://github.com/kvcache-ai/Mooncake --recursive && \
     cd Mooncake && \
     bash dependencies.sh -y && \

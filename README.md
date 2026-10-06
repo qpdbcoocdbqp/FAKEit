@@ -85,18 +85,15 @@ Start SGLang service. Playing with [FAKEit](https://www.youtube.com/watch?v=a_iU
 
 ### Start SGLang server with Docker
 
-* **Stable version (cuda 12)**
+* **Stable version (cuda 13)**
 
   ```sh
-  # stable version (cuda 12)
-  docker pull lmsysorg/sglang:v0.5.16
+  # stable version (cuda 13)
+  docker pull lmsysorg/sglang:v0.5.21-runtime
   ```
   
-* <details> <summary> Nightly version (cuda 13) </summary>
-
   ```sh
-  docker pull lmsysorg/sglang:v0.5.16-cu130
-  docker build -t lmsysorg/sglang:v0.5.16-cu130-pd -f sgl/pd.dockerfile .
+  docker build -t lmsysorg/sglang:v0.5.21-pd -f sgl/pd.dockerfile .
   ```
 
 </details>
