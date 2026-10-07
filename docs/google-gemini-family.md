@@ -6,6 +6,7 @@
 
     | ModelCard                                                                                                         | Type                |
     | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
+    |[ggml-org/embeddinggemma-2](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF)| Sentence Similarity  |
     |[yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF gemma4-coding-Q4_K_M.gguf]()| Image-Text-to-Text  |
     |[sakamakismile/gemma-4-12B-coder-fable5-composer2.5-MTP-NVFP4](https://huggingface.co/sakamakismile/gemma-4-12B-coder-fable5-composer2.5-MTP-NVFP4)| Image-Text-to-Text  |
     | [unsloth/gemma-4-12B-it-qat-GGUF:gemma-4-12B-it-qat-UD-Q4_K_XL.gguf](https://huggingface.co/unsloth/gemma-4-12B-it-qat-GGUF) | Image-Text-to-Text  |
@@ -76,6 +77,20 @@ python -m script.google-gemini-family
 ```
 
 ## Reference
+
+
+* EmbeddingGemma 2
+
+    ```bash
+    ./llama-server \
+    --host 127.0.0.1 --port 9006 \
+    --model /models/models--ggml-org--embeddinggemma-2-GGUF/snapshots/bfcd298762cc34d0357ece5ebdd31791a3a374d8/embeddinggemma-2-Q8_0.gguf \
+    --mmproj /models/models--ggml-org--embeddinggemma-2-GGUF/snapshots/bfcd298762cc34d0357ece5ebdd31791a3a374d8/mmproj-embeddinggemma-2-Q8_0.gguf \
+    --embedding \
+    --pooling mean \
+    --alias embeddinggemma-2 \
+    -c 2048 -b 2048 -ub 2048
+    ```
 
 * Gemma 4 - [llama.cpp](https://github.com/ggml-org/llama.cpp)
 

@@ -1,5 +1,9 @@
-from script.utils import GeminiFamily, console, ThemeConsole
+import base64
+import mimetypes
 import random
+import requests
+from pathlib import Path
+from script.utils import GeminiFamily, console, ThemeConsole
 
 
 theme_console = ThemeConsole()
@@ -23,6 +27,48 @@ def test_similarity():
     similarity, q_emb, d_emb = GF.similarity(query, documents, dim=truncate_dim)
     GF.release_vram()
     pass
+
+def test_multi_embed():
+    URL = "http://localhost:19001/v1/embeddings"
+    IMAGE_PATH = Path("test.png")
+
+    mime_type = mimetypes.guess_type(IMAGE_PATH.name)[0]
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise ValueError("請使用 JPEG、PNG 或 WebP 圖片")
+
+    image_base64 = base64.b64encode(IMAGE_PATH.read_bytes()).decode("ascii")
+    image_url = f"data:{mime_type};base64,{image_base64}"
+
+    text_part = {
+        "type": "text",
+        "text": "title: none | text: EmbeddingGemma2 ",
+    }
+    image_part = {
+        "type": "image_url",
+        "image_url": {"url": image_url},
+    }
+
+    payload = {
+        "model": "embeddinggemma-2",
+        "input": [
+            {
+                "content": [text_part, image_part],
+            }
+        ],
+        "encoding_format": "float",
+    }
+
+    response = requests.post(URL, json=payload, timeout=120)
+
+    if not response.ok:
+        raise RuntimeError(f"HTTP {response.status_code}\n{response.text}")
+
+    result = response.json()
+    embedding = result["data"][0]["embedding"]
+
+    console.print("Dimension：", len(embedding))
+    console.print("Firt 8 numbers：", embedding[:8])
+    console.print("Usage：", result.get("usage"))
 
 def test_generate():
     models_id = ['google/functiongemma-270m-it', 'google/gemma-3-270m-it', 'google/gemma-3-270m-it-qat-q4_0-unquantized']
@@ -101,5 +147,6 @@ def test_image_generate():
 
 if __name__ == "__main__":
     test_similarity()
+    test_multi_embed()
     test_generate()
     test_image_generate()
